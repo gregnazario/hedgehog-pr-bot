@@ -92,20 +92,34 @@ test("snaps a nearby line onto the same file and side", () => {
   assert.equal(anchor.line, 4);
 });
 
-test("keeps multi-line ranges only when both ends share a hunk", () => {
-  const locations = indexDiffLocations(modifiedDiff);
-  const anchor = resolveCommentAnchor(locations, {
-    path: "src/app.mjs",
-    line: 4,
-    side: "RIGHT",
-    start_line: 1,
+test("uses an exact line on the other side before snapping", () => {
+  const diff = `diff --git a/gone.mjs b/gone.mjs
+deleted file mode 100644
+--- a/gone.mjs
++++ /dev/null
+@@ -1,2 +0,0 @@
+-export const gone = true;
+-export default gone;
+`;
+  const locations = indexDiffLocations(diff);
+  assert.deepEqual(resolveCommentAnchor(locations, { path: "gone.mjs", line: 2, side: "RIGHT" }), {
+    path: "gone.mjs",
+    line: 2,
+    side: "LEFT",
   });
-  assert.deepEqual(anchor, {
+});
+
+test("keeps comments on a single line even when start_line is present", () => {
+  const locations = indexDiffLocations(modifiedDiff);
+  assert.deepEqual(resolveCommentAnchor(locations, {
     path: "src/app.mjs",
     line: 4,
     side: "RIGHT",
     start_line: 1,
-    start_side: "RIGHT",
+  }), {
+    path: "src/app.mjs",
+    line: 4,
+    side: "RIGHT",
   });
 });
 

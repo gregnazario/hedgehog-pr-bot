@@ -77,6 +77,41 @@ test("posts an inline GitHub review for a new PR head", async () => {
   });
 });
 
+test("posts a LEFT-side comment on a deleted line", async () => {
+  let posted;
+  const client = {
+    getPullRequest: async () => pullRequest(),
+    listIssueComments: async () => [],
+    listPullRequestReviews: async () => [],
+    getPullRequestDiff: async () => `diff --git a/gone.mjs b/gone.mjs
+deleted file mode 100644
+--- a/gone.mjs
++++ /dev/null
+@@ -1,1 +0,0 @@
+-export const gone = true;
+`,
+    createPullRequestReview: async (_repo, _number, payload) => (posted = payload),
+  };
+  const result = await reviewPullRequest({
+    client,
+    fullName: "gregnazario/example",
+    number: 7,
+    config,
+    runModel: async () => JSON.stringify({
+      summary: "Don't drop this.",
+      findings: [{ severity: "High", path: "gone.mjs", line: 1, side: "LEFT", body: "This export is still used." }],
+    }),
+    logger: { log() {}, error() {} },
+  });
+  assert.equal(result.status, "reviewed");
+  assert.deepEqual(posted.comments, [{
+    path: "gone.mjs",
+    line: 1,
+    side: "LEFT",
+    body: "**High:** This export is still used.",
+  }]);
+});
+
 test("does not rerun a current inline review", async () => {
   let ran = false;
   const client = {
@@ -152,10 +187,12 @@ test("retries with a summary-only review when inline comments are rejected", asy
   assert.equal(payloads[0].comments.length, 1);
   assert.equal(payloads[1].comments, undefined);
   assert.match(payloads[1].body, /The addition looks right/);
+  assert.doesNotMatch(payloads[1].body, /inline comment/);
 });
 
 test("attaches comments one at a time after a batch review is rejected", async () => {
   const singles = [];
+  let updated;
   const client = {
     getPullRequest: async () => pullRequest(),
     listIssueComments: async () => [],
@@ -163,8 +200,12 @@ test("attaches comments one at a time after a batch review is rejected", async (
     getPullRequestDiff: async () => sampleDiff,
     createPullRequestReview: async (_repo, _number, payload) => {
       if (payload.comments?.length) throw new Error("GitHub returned 422: line could not be resolved");
+      return { id: 44 };
     },
     createPullRequestReviewComment: async (_repo, _number, payload) => singles.push(payload),
+    updatePullRequestReview: async (_repo, _number, reviewId, body) => {
+      updated = { reviewId, body };
+    },
   };
   const result = await reviewPullRequest({
     client,
@@ -179,6 +220,8 @@ test("attaches comments one at a time after a batch review is rejected", async (
   assert.equal(singles[0].path, "src/app.mjs");
   assert.equal(singles[0].line, 4);
   assert.equal(singles[0].commitId, "1234567890");
+  assert.equal(updated.reviewId, 44);
+  assert.match(updated.body, /1 inline comment/);
 });
 
 test("posts a summary-only review when the model returns markdown instead of JSON", async () => {

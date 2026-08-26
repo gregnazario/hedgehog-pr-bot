@@ -109,3 +109,18 @@ test("posts a single pull request review comment on a line", async () => {
     side: "RIGHT",
   });
 });
+
+test("updates a pull request review body", async () => {
+  const calls = [];
+  const client = new GitHubClient("token", async (url, options) => {
+    calls.push({ url, options });
+    return new Response(JSON.stringify({ id: 44 }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  });
+  await client.updatePullRequestReview("gregnazario/example", 7, 44, "updated");
+  assert.equal(calls[0].url, "https://api.github.com/repos/gregnazario/example/pulls/7/reviews/44");
+  assert.equal(calls[0].options.method, "PUT");
+  assert.deepEqual(JSON.parse(calls[0].options.body), { body: "updated" });
+});

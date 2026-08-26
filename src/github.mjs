@@ -140,6 +140,13 @@ export class GitHubClient {
     });
   }
 
+  updatePullRequestReview(fullName, number, reviewId, body) {
+    return this.request(`/repos/${repoPath(fullName)}/pulls/${number}/reviews/${reviewId}`, {
+      method: "PUT",
+      body: { body },
+    });
+  }
+
   createIssueComment(fullName, number, body) {
     return this.request(`/repos/${repoPath(fullName)}/issues/${number}/comments`, {
       method: "POST",

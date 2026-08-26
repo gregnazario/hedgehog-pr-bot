@@ -54,10 +54,6 @@ export function toReviewComments(findings, locations, { includeModel = false } =
       side: anchor.side,
       body: formatInlineComment(finding, includeModel),
     };
-    if (anchor.start_line) {
-      comment.start_line = anchor.start_line;
-      comment.start_side = anchor.start_side;
-    }
     mapped.push({
       finding,
       comment,
@@ -67,8 +63,8 @@ export function toReviewComments(findings, locations, { includeModel = false } =
 
   mapped.sort((left, right) => left.rank - right.rank);
   const comments = mapped.slice(0, maxComments).map((item) => item.comment);
-  unmapped.push(...mapped.slice(maxComments).map((item) => item.finding));
-  return { comments, unmapped };
+  const overflow = mapped.slice(maxComments).map((item) => item.finding);
+  return { comments, unmapped, overflow };
 }
 
 export function buildReviewBody({
@@ -76,28 +72,25 @@ export function buildReviewBody({
   summary,
   commentCount,
   unmapped = [],
+  overflow = [],
   headSha,
   modelLabels,
 }) {
   const piVersion = process.env.PI_VERSION || "0.84.2";
   const footer = `\n\n---\n<sub>Reviewed ${shortSha(headSha)} with Pi ${piVersion} using ${modelLabels}.</sub>`;
+  const hasFindings = commentCount > 0 || unmapped.length > 0 || overflow.length > 0;
   const parts = [
     "## Pi code review",
     "",
-    String(summary ?? "").trim() || "No actionable issues found.",
+    String(summary ?? "").trim() || (hasFindings ? "See inline comments." : "No actionable issues found."),
   ];
   if (commentCount > 0) {
     const noun = commentCount === 1 ? "inline comment" : "inline comments";
     const verb = commentCount === 1 ? "was" : "were";
     parts.push("", `${commentCount} ${noun} ${verb} left on the diff.`);
   }
-  if (unmapped.length > 0) {
-    parts.push("", "### Could not attach to the diff", "");
-    for (const finding of unmapped) {
-      const place = finding.line ? `${finding.path}:${finding.line}` : finding.path;
-      parts.push(`- **${finding.severity}** \`${place}\` — ${finding.body}`);
-    }
-  }
+  appendFindingList(parts, overflow, "### Additional findings (GitHub limit 100)");
+  appendFindingList(parts, unmapped, "### Could not attach to the diff");
 
   const review = parts.join("\n");
   const maxLength = maxReviewChars - marker.length - footer.length;
@@ -147,6 +140,15 @@ function normalizeSeverity(value) {
   if (text === "medium") return "Medium";
   if (text === "low") return "Low";
   return "Low";
+}
+
+function appendFindingList(parts, findings, heading) {
+  if (!findings.length) return;
+  parts.push("", heading, "");
+  for (const finding of findings) {
+    const place = finding.line ? `${finding.path}:${finding.line}` : finding.path;
+    parts.push(`- **${finding.severity || "Low"}** \`${place}\` — ${finding.body}`);
+  }
 }
 
 function shortSha(sha) {

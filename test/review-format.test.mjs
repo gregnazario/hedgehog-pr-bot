@@ -123,9 +123,10 @@ test("keeps the 100-comment GitHub limit and prefers higher severity", () => {
     side: "RIGHT",
     body: `Finding ${index}`,
   }));
-  const { comments, unmapped } = toReviewComments(findings, indexDiffLocations(diff));
+  const { comments, unmapped, overflow } = toReviewComments(findings, indexDiffLocations(diff));
   assert.equal(comments.length, 100);
-  assert.equal(unmapped.length, 20);
+  assert.equal(unmapped.length, 0);
+  assert.equal(overflow.length, 20);
   assert.equal(comments.filter((comment) => comment.body.startsWith("**Critical:**")).length, 5);
 });
 
@@ -150,10 +151,13 @@ test("includes unmapped notes in the review summary", () => {
     summary: "Mostly inline.",
     commentCount: 1,
     unmapped: [{ severity: "High", path: "README.md", line: 3, body: "Mention the flag." }],
+    overflow: [{ severity: "Low", path: "src/app.mjs", line: 4, body: "Later note." }],
     headSha: "1234567dead",
     modelLabels: "zai/glm-5.3:high",
   });
   assert.match(body, /Could not attach to the diff/);
   assert.match(body, /README\.md:3/);
   assert.match(body, /Mention the flag/);
+  assert.match(body, /Additional findings \(GitHub limit 100\)/);
+  assert.match(body, /Later note/);
 });

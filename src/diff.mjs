@@ -57,11 +57,11 @@ export function indexDiffLocations(diff) {
       continue;
     }
     if (rawLine.startsWith("rename from ")) {
-      oldPath = rawLine.slice("rename from ".length).trim();
+      oldPath = parseDiffPath(rawLine.slice("rename from ".length));
       continue;
     }
     if (rawLine.startsWith("rename to ")) {
-      newPath = rawLine.slice("rename to ".length).trim();
+      newPath = parseDiffPath(rawLine.slice("rename to ".length));
       if (oldPath && newPath && oldPath !== newPath) aliases.set(oldPath, newPath);
       continue;
     }
@@ -173,17 +173,7 @@ export function resolveCommentAnchor(locations, finding) {
   const requestedSide = normalizeSide(finding.side) || "RIGHT";
   const match = pickLocation(locations, path, requestedSide, line);
   if (!match) return null;
-
-  const anchor = { path: match.path, line: match.line, side: match.side };
-  const startLine = Number(finding.start_line ?? finding.startLine);
-  if (Number.isSafeInteger(startLine) && startLine > 0 && startLine < match.line) {
-    const start = locations.get(match.path, match.side, startLine);
-    if (start && start.hunkId === match.hunkId) {
-      anchor.start_line = startLine;
-      anchor.start_side = match.side;
-    }
-  }
-  return anchor;
+  return { path: match.path, line: match.line, side: match.side };
 }
 
 function pickLocation(locations, path, side, line) {
@@ -191,14 +181,11 @@ function pickLocation(locations, path, side, line) {
   if (exact) return exact;
 
   const other = side === "RIGHT" ? "LEFT" : "RIGHT";
-  const nearestSame = nearestOnSide(locations, path, side, line);
-  if (nearestSame && Math.abs(nearestSame.line - line) <= MAX_SNAP_DISTANCE) return nearestSame;
-
   const exactOther = locations.get(path, other, line);
   if (exactOther) return exactOther;
 
-  const nearestOther = nearestOnSide(locations, path, other, line);
-  if (nearestOther && Math.abs(nearestOther.line - line) <= MAX_SNAP_DISTANCE) return nearestOther;
+  const nearestSame = nearestOnSide(locations, path, side, line);
+  if (nearestSame && Math.abs(nearestSame.line - line) <= MAX_SNAP_DISTANCE) return nearestSame;
   return null;
 }
 
