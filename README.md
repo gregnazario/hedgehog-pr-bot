@@ -6,7 +6,9 @@ GLM-5.3 through a Z.AI Coding Plan subscription, and the model list is configura
 
 The bot is event driven. A single long-running server receives GitHub App webhooks and
 queues a review immediately when one of your PRs is opened, reopened, marked ready, or
-updated with new commits. No workflow file is needed in the repositories being reviewed.
+updated with new commits. Findings are posted as GitHub review comments on the changed
+lines, with a short summary on the review itself, rather than one large issue comment.
+No workflow file is needed in the repositories being reviewed.
 
 An hourly GitHub Actions scan remains as a recovery path for deliveries missed while the
 server is unavailable. The review marker makes both paths idempotent, so they do not post
@@ -76,8 +78,8 @@ Every webhook body is verified against `X-Hub-Signature-256` using HMAC-SHA256 a
 constant-time comparison before it is parsed or queued. The server exchanges a short-lived,
 RS256-signed GitHub App JWT for an installation token and caches that token only in memory.
 
-The controller can read PR diffs and update comments, but GitHub tokens, the App private
-key, and the webhook secret are removed from Pi's environment. Pi runs with tools,
+The controller can read PR diffs and submit pull request reviews, but GitHub tokens, the
+App private key, and the webhook secret are removed from Pi's environment. Pi runs with tools,
 extensions, skills, context files, sessions, and project trust disabled. PR titles,
 descriptions, and diffs are model input only; they cannot execute commands or read server
 secrets.
@@ -122,7 +124,9 @@ docker compose up -d --build
 
 The queue is intentionally in memory. GitHub retries failed webhook deliveries, and the
 hourly workflow reconciles open PRs after an outage. Large diffs are capped at four million
-characters; split very large changes into smaller PRs for more focused feedback.
+characters; split very large changes into smaller PRs for more focused feedback. Inline
+comments are only attached to lines that appear in the pull request diff; anything the
+model cannot place is kept in the review summary.
 
 Run the test suite with Node.js 24 or newer:
 

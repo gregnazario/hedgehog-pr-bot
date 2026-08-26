@@ -110,6 +110,36 @@ export class GitHubClient {
     });
   }
 
+  listPullRequestReviews(fullName, number) {
+    return this.paginatedList(`/repos/${repoPath(fullName)}/pulls/${number}/reviews`);
+  }
+
+  createPullRequestReview(fullName, number, { commitId, body, event = "COMMENT", comments } = {}) {
+    return this.request(`/repos/${repoPath(fullName)}/pulls/${number}/reviews`, {
+      method: "POST",
+      body: {
+        commit_id: commitId,
+        body,
+        event,
+        ...(comments?.length ? { comments } : {}),
+      },
+    });
+  }
+
+  createPullRequestReviewComment(fullName, number, { commitId, path, body, line, side, start_line, start_side } = {}) {
+    return this.request(`/repos/${repoPath(fullName)}/pulls/${number}/comments`, {
+      method: "POST",
+      body: {
+        commit_id: commitId,
+        path,
+        body,
+        line,
+        side,
+        ...(start_line ? { start_line, start_side: start_side || side } : {}),
+      },
+    });
+  }
+
   createIssueComment(fullName, number, body) {
     return this.request(`/repos/${repoPath(fullName)}/issues/${number}/comments`, {
       method: "POST",
@@ -121,6 +151,12 @@ export class GitHubClient {
     return this.request(`/repos/${repoPath(fullName)}/issues/comments/${commentId}`, {
       method: "PATCH",
       body: { body },
+    });
+  }
+
+  deleteIssueComment(fullName, commentId) {
+    return this.request(`/repos/${repoPath(fullName)}/issues/comments/${commentId}`, {
+      method: "DELETE",
     });
   }
 }

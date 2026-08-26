@@ -35,3 +35,77 @@ test("paginates GitHub list responses", async () => {
   assert.equal(results.length, 102);
   assert.equal(calls.length, 2);
 });
+
+test("submits a pull request review with inline comments", async () => {
+  const calls = [];
+  const client = new GitHubClient("token", async (url, options) => {
+    calls.push({ url, options });
+    return new Response(JSON.stringify({ id: 99 }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  });
+  await client.createPullRequestReview("gregnazario/example", 7, {
+    commitId: "abc123",
+    body: "summary",
+    event: "COMMENT",
+    comments: [{ path: "src/app.mjs", line: 4, side: "RIGHT", body: "note" }],
+  });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, "https://api.github.com/repos/gregnazario/example/pulls/7/reviews");
+  assert.equal(calls[0].options.method, "POST");
+  assert.deepEqual(JSON.parse(calls[0].options.body), {
+    commit_id: "abc123",
+    body: "summary",
+    event: "COMMENT",
+    comments: [{ path: "src/app.mjs", line: 4, side: "RIGHT", body: "note" }],
+  });
+});
+
+test("omits the comments array when posting a summary-only review", async () => {
+  const calls = [];
+  const client = new GitHubClient("token", async (url, options) => {
+    calls.push({ url, options });
+    return new Response(JSON.stringify({ id: 99 }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  });
+  await client.createPullRequestReview("gregnazario/example", 7, {
+    commitId: "abc123",
+    body: "summary",
+    event: "COMMENT",
+    comments: [],
+  });
+  assert.deepEqual(JSON.parse(calls[0].options.body), {
+    commit_id: "abc123",
+    body: "summary",
+    event: "COMMENT",
+  });
+});
+
+test("posts a single pull request review comment on a line", async () => {
+  const calls = [];
+  const client = new GitHubClient("token", async (url, options) => {
+    calls.push({ url, options });
+    return new Response(JSON.stringify({ id: 12 }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  });
+  await client.createPullRequestReviewComment("gregnazario/example", 7, {
+    commitId: "abc123",
+    path: "src/app.mjs",
+    line: 4,
+    side: "RIGHT",
+    body: "note",
+  });
+  assert.equal(calls[0].url, "https://api.github.com/repos/gregnazario/example/pulls/7/comments");
+  assert.deepEqual(JSON.parse(calls[0].options.body), {
+    commit_id: "abc123",
+    path: "src/app.mjs",
+    body: "note",
+    line: 4,
+    side: "RIGHT",
+  });
+});
