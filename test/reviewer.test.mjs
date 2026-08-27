@@ -161,6 +161,34 @@ test("force re-reviews a head that already has a marker", async () => {
   assert.equal(posted.event, "COMMENT");
 });
 
+test("does not double-count unmapped findings in the tally", async () => {
+  let posted;
+  const client = baseClient({
+    createPullRequestReview: async (_repo, _number, payload) => (posted = payload),
+  });
+  const result = await reviewPullRequest({
+    client,
+    fullName: "gregnazario/example",
+    number: 7,
+    config,
+    runModel: async () => JSON.stringify({
+      summary: "Line is gone.",
+      findings: [{
+        severity: "Low",
+        path: "missing.mjs",
+        line: 1,
+        side: "RIGHT",
+        body: "Cannot map this.",
+      }],
+    }),
+    logger: { log() {}, error() {} },
+  });
+  assert.equal(result.status, "reviewed");
+  assert.deepEqual(result.severities, ["Low"]);
+  assert.match(posted.body, /ℹ️ 1 Low/);
+  assert.doesNotMatch(posted.body, /ℹ️ 2 Low/);
+});
+
 test("leaves leftover issue comments in place", async () => {
   const deleted = [];
   let posted;
@@ -301,7 +329,8 @@ test("dismisses outstanding hedgehog REQUEST_CHANGES on a Medium/Low pass", asyn
   const dismissed = [];
   const client = baseClient({
     listPullRequestReviews: async () => [
-      { id: 9, user: { type: "Bot" }, state: "CHANGES_REQUESTED", body: "old" },
+      { id: 9, user: { type: "Bot", login: "hedgehog-pr-bot[bot]" }, state: "CHANGES_REQUESTED", body: "old" },
+      { id: 8, user: { type: "Bot", login: "cursor[bot]" }, state: "CHANGES_REQUESTED", body: "cursor" },
     ],
     createPullRequestReview: async () => ({ id: 10 }),
     dismissPullRequestReview: async (_repo, _number, id) => dismissed.push(id),
@@ -316,6 +345,37 @@ test("dismisses outstanding hedgehog REQUEST_CHANGES on a Medium/Low pass", asyn
     logger: { log() {}, error() {} },
   });
   assert.deepEqual(dismissed, [9]);
+});
+
+test("does not post Still applies when hedgehog already replied", async () => {
+  const replies = [];
+  const client = baseClient({
+    listUnresolvedHedgehogThreads: async () => [{
+      commentId: 202,
+      threadId: "T202",
+      path: "src/app.mjs",
+      line: 3,
+      side: "RIGHT",
+      severity: "Low",
+      body: "**Low:** still",
+      alreadyReplied: true,
+    }],
+    createPullRequestReview: async () => {},
+    createPullRequestReviewCommentReply: async (_repo, _number, id, body) => replies.push({ id, body }),
+  });
+  await reviewPullRequest({
+    client,
+    fullName: "gregnazario/example",
+    number: 7,
+    config,
+    runModel: async () => JSON.stringify({
+      summary: "Still open.",
+      findings: [],
+      still_applies: [{ id: 202 }],
+    }),
+    logger: { log() {}, error() {} },
+  });
+  assert.deepEqual(replies, []);
 });
 
 test("completes the check as failure when Pi throws", async () => {

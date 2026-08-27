@@ -20,6 +20,13 @@ export function isHedgehogLogin(login) {
   return String(login ?? "").replace(/\[bot\]$/i, "") === "hedgehog-pr-bot";
 }
 
+export function reviewHasCurrentMarker(reviews, marker) {
+  if (!marker) return false;
+  return (reviews ?? []).some((review) => (
+    review.body?.startsWith(marker) && (review.user?.type === "Bot" || isHedgehogLogin(review.user?.login))
+  ));
+}
+
 export function parseSeverityPrefix(body) {
   const match = String(body ?? "").match(/\*\*(Critical|High|Medium|Low):\*\*/i);
   if (!match) return "Low";
@@ -55,19 +62,17 @@ export function applyThreadDecisions({ findings = [], addressedCommentIds = [], 
   }
 
   const occupied = new Set();
-  for (const thread of stillReplies) occupied.add(locationKey(thread.path, thread.line));
-  for (const finding of movedFindings) occupied.add(locationKey(finding.path, finding.line));
+  for (const thread of stillReplies) occupied.add(locationKey(thread.path, thread.side, thread.line));
+  for (const finding of movedFindings) occupied.add(locationKey(finding.path, finding.side, finding.line));
 
-  const newFindings = findings.filter((finding) => !occupied.has(locationKey(finding.path, finding.line)));
+  const newFindings = findings.filter((finding) => !occupied.has(locationKey(finding.path, finding.side, finding.line)));
   return { newFindings, movedFindings, stillReplies, addressed };
 }
 
-export function collectSeverities({ newFindings = [], movedFindings = [], stillReplies = [], unmapped = [], overflow = [] }) {
+export function collectSeverities({ newFindings = [], movedFindings = [], stillReplies = [] }) {
   return [
     ...newFindings,
     ...movedFindings,
-    ...unmapped,
-    ...overflow,
     ...stillReplies,
   ].map((item) => normalizeSeverity(item.severity));
 }
@@ -95,10 +100,11 @@ export function tallyLine(severities) {
 
 export function checkOutcome({ failed = false, errorMessage = "", severities = [] } = {}) {
   if (failed) {
+    const detail = sanitizeCheckText(errorMessage);
     return {
       conclusion: "failure",
       title: "❌ Review failed",
-      summary: String(errorMessage ?? "").trim() || "Review failed.",
+      summary: detail ? `\`\`\`\n${detail}\n\`\`\`` : "Review failed.",
     };
   }
   const high = severities.filter((severity) => severity === "Critical" || severity === "High").length;
@@ -124,8 +130,17 @@ export function checkOutcome({ failed = false, errorMessage = "", severities = [
   };
 }
 
-function locationKey(path, line) {
-  return `${path}\0${line}`;
+function locationKey(path, side, line) {
+  return `${path}\0${side || "RIGHT"}\0${line}`;
+}
+
+export function sanitizeCheckText(text, limit = 500) {
+  const cleaned = String(text ?? "")
+    .replace(/\u001b\[[0-9;]*m/g, "")
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "")
+    .replaceAll("```", "")
+    .trim();
+  return cleaned.slice(0, limit);
 }
 
 function normalizeSeverity(value) {

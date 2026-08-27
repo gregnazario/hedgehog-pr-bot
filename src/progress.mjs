@@ -1,4 +1,5 @@
-import { CHECK_NAME, hasSkipReviewLabel, isHedgehogLogin } from "./signals.mjs";
+import { reviewMarker } from "./config.mjs";
+import { CHECK_NAME, hasSkipReviewLabel, isHedgehogLogin, reviewHasCurrentMarker } from "./signals.mjs";
 
 export async function startProgress(client, { fullName, number, headSha, logger = console }) {
   const eyesReactionId = await ensureEyes(client, fullName, number, logger);
@@ -79,7 +80,7 @@ async function ensureEyes(client, fullName, number, logger) {
   }
 }
 
-export async function prepareAcceptedJob(client, job, author, logger = console) {
+export async function prepareAcceptedJob(client, job, { author, fingerprint, force = false } = {}, logger = console) {
   const pullRequest = await client.getPullRequest(job.fullName, job.number);
   if (pullRequest.state !== "open" || pullRequest.draft) return null;
   if (pullRequest.user?.login?.toLowerCase() !== author) return null;
@@ -88,6 +89,10 @@ export async function prepareAcceptedJob(client, job, author, logger = console) 
     if (hasSkipReviewLabel(labels)) return null;
   }
   const headSha = pullRequest.head?.sha;
+  if (!force && fingerprint && typeof client.listPullRequestReviews === "function") {
+    const reviews = await client.listPullRequestReviews(job.fullName, job.number);
+    if (reviewHasCurrentMarker(reviews, reviewMarker(headSha, fingerprint))) return null;
+  }
   const progress = await startProgress(client, {
     fullName: job.fullName,
     number: job.number,

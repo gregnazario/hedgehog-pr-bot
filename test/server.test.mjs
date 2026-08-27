@@ -39,12 +39,36 @@ test("serves health checks and authenticates webhook pings", async (t) => {
   assert.equal(rejected.status, 401);
 });
 
-test("accepted pull_request webhook starts a check and queues the review", async (t) => {
+function pullRequestWebhookBody() {
+  return JSON.stringify({
+    action: "synchronize",
+    number: 7,
+    installation: { id: 1 },
+    repository: { full_name: "gregnazario/example" },
+    pull_request: {
+      draft: false,
+      user: { login: "gregnazario" },
+      head: { sha: "abcdef1dead" },
+      labels: [],
+    },
+  });
+}
+
+test("accepted pull_request webhook returns 202 before GitHub calls", async (t) => {
   const secret = "test-secret";
+  let releaseToken;
+  const tokenGate = new Promise((resolve) => {
+    releaseToken = resolve;
+  });
   const checks = [];
   const { server, queue } = createAppServer({
     webhookSecret: secret,
-    tokenProvider: { get: async () => "token" },
+    tokenProvider: {
+      get: async () => {
+        await tokenGate;
+        return "token";
+      },
+    },
     reviewConfig: { author: "gregnazario", fingerprint: "abc123", models: [], maxDiffChars: 1000 },
     logger: { log() {}, error() {} },
     createClient: () => ({
@@ -61,10 +85,9 @@ test("accepted pull_request webhook starts a check and queues the review", async
         checks.push(payload);
         return { id: 9 };
       },
-      listPullRequestReviews: async () => [{
-        user: { type: "Bot" },
-        body: "<!-- greg-pr-bot-review head:abcdef1dead config:abc123 -->\ndone",
-      }],
+      listPullRequestReviews: async () => [],
+      getPullRequestDiff: async () => "",
+      createPullRequestReview: async () => {},
       updateCheckRun: async () => {},
       deleteIssueReaction: async () => {},
     }),
@@ -72,19 +95,7 @@ test("accepted pull_request webhook starts a check and queues the review", async
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   t.after(() => new Promise((resolve) => server.close(resolve)));
   const { port } = server.address();
-  const payload = JSON.stringify({
-    action: "synchronize",
-    number: 7,
-    installation: { id: 1 },
-    repository: { full_name: "gregnazario/example" },
-    pull_request: {
-      draft: false,
-      user: { login: "gregnazario" },
-      head: { sha: "abcdef1dead" },
-      labels: [],
-    },
-  });
-  const body = Buffer.from(payload);
+  const body = Buffer.from(pullRequestWebhookBody());
   const signature = `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`;
   const response = await fetch(`http://127.0.0.1:${port}/github/webhook`, {
     method: "POST",
@@ -96,9 +107,56 @@ test("accepted pull_request webhook starts a check and queues the review", async
   });
   assert.equal(response.status, 202);
   assert.deepEqual(await response.json(), { accepted: true });
+  assert.equal(checks.length, 0);
+  releaseToken();
+  await queue.onIdle();
   assert.equal(checks.length, 1);
   assert.equal(checks[0].name, "Pi review");
+});
+
+test("does not start progress when this head is already reviewed", async (t) => {
+  const secret = "test-secret";
+  const checks = [];
+  const { server, queue } = createAppServer({
+    webhookSecret: secret,
+    tokenProvider: { get: async () => "token" },
+    reviewConfig: { author: "gregnazario", fingerprint: "abc123", models: [], maxDiffChars: 1000 },
+    logger: { log() {}, error() {} },
+    createClient: () => ({
+      getPullRequest: async () => ({
+        state: "open",
+        draft: false,
+        user: { login: "gregnazario" },
+        head: { sha: "abcdef1dead" },
+      }),
+      listIssueLabels: async () => [],
+      createCheckRun: async (_repo, payload) => {
+        checks.push(payload);
+        return { id: 9 };
+      },
+      listPullRequestReviews: async () => [{
+        user: { type: "Bot", login: "hedgehog-pr-bot[bot]" },
+        body: "<!-- greg-pr-bot-review head:abcdef1dead config:abc123 -->\ndone",
+      }],
+    }),
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const { port } = server.address();
+  const body = Buffer.from(pullRequestWebhookBody());
+  const signature = `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`;
+  const response = await fetch(`http://127.0.0.1:${port}/github/webhook`, {
+    method: "POST",
+    headers: {
+      "X-GitHub-Event": "pull_request",
+      "X-Hub-Signature-256": signature,
+    },
+    body,
+  });
+  assert.equal(response.status, 202);
+  assert.deepEqual(await response.json(), { accepted: true });
   await queue.onIdle();
+  assert.equal(checks.length, 0);
 });
 
 test("does not start progress for skip-review PRs", async (t) => {

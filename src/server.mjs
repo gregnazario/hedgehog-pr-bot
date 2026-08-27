@@ -23,14 +23,20 @@ export function createAppServer({
   const queue = new SerialDedupeQueue(async (job) => {
     const token = await tokenProvider.get(job.installationId);
     const client = createClient(token);
+    const prepared = await prepareAcceptedJob(client, job, {
+      author: reviewConfig.author,
+      fingerprint: reviewConfig.fingerprint,
+      force: Boolean(job.force),
+    }, logger);
+    if (!prepared) return;
     await reviewPullRequest({
       client,
-      fullName: job.fullName,
-      number: job.number,
+      fullName: prepared.fullName,
+      number: prepared.number,
       config: reviewConfig,
       force: Boolean(job.force),
-      checkRunId: job.checkRunId,
-      eyesReactionId: job.eyesReactionId,
+      checkRunId: prepared.checkRunId,
+      eyesReactionId: prepared.eyesReactionId,
       logger,
     });
   }, {
@@ -72,19 +78,9 @@ export function createAppServer({
 
       const job = reviewJobFromWebhook(eventName, payload, reviewConfig.author);
       if (!job) return json(response, 202, { accepted: false });
-      try {
-        const token = await tokenProvider.get(job.installationId);
-        const prepared = await prepareAcceptedJob(createClient(token), job, reviewConfig.author, logger);
-        if (!prepared) return json(response, 202, { accepted: false });
-        queue.enqueue(prepared);
-        logger.log(`Queued ${prepared.key} at ${prepared.headSha?.slice(0, 7) || "unknown"}`);
-        return json(response, 202, { accepted: true });
-      } catch (error) {
-        logger.error(`Could not start progress for ${job.key}: ${error.message}`);
-        queue.enqueue(job);
-        logger.log(`Queued ${job.key} at ${job.headSha?.slice(0, 7) || "unknown"}`);
-        return json(response, 202, { accepted: true });
-      }
+      queue.enqueue(job);
+      logger.log(`Queued ${job.key} at ${job.headSha?.slice(0, 7) || "unknown"}`);
+      return json(response, 202, { accepted: true });
     } catch (error) {
       if (error.code === "BODY_TOO_LARGE") return json(response, 413, { error: "body_too_large" });
       logger.error(`Webhook request failed: ${error.message}`);

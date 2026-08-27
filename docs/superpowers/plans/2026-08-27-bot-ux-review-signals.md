@@ -4,7 +4,7 @@
 
 **Goal:** Ship the approved UX spec: 👀 plus a `Pi review` check, severity-based APPROVE / REQUEST_CHANGES / COMMENT, single-pass thread follow-up, `/review` and `skip-review`.
 
-**Architecture:** Keep the serial webhook queue. On accept, best-effort 👀 + in-progress check, then one Pi pass that also decides thread resolve/reply. New pure helpers live in `src/signals.mjs`; GitHub API additions stay on `GitHubClient`. Findings never conclude the check as `failure`.
+**Architecture:** Keep the serial webhook queue. The webhook only enqueues and 202s. When the worker (or scan) starts a runnable job, best-effort 👀 + in-progress check, then one Pi pass that also decides thread resolve/reply. New pure helpers live in `src/signals.mjs`; GitHub API additions stay on `GitHubClient`. Findings never conclude the check as `failure`.
 
 **Tech Stack:** Node.js 24, built-in `node:test`, GitHub REST + GraphQL, existing Pi spawn.
 
@@ -110,6 +110,6 @@
 - Modify: `src/reviewer.mjs`, `src/server.mjs`, `scripts/review-prs.mjs`, `.github/workflows/review.yml`, `README.md`
 - Test: `test/progress.test.mjs`, `test/reviewer.test.mjs`, `test/server.test.mjs`
 
-Wire startProgress on accept, cancel superseded queued checks, Pi bundle includes previous threads, review event/dismiss/reply/resolve, finish check, no issue-comment deletion, `force` bypasses marker, TOCTOU re-check, `permission-checks: write`.
+Wire startProgress in the worker/scan after skip-review, draft/author, and marker checks; webhook 202s without GitHub; cancel superseded queued checks if they already have a `checkRunId`; Pi bundle includes previous threads; review event/dismiss (hedgehog only)/reply (skip duplicate Still applies)/resolve; finish check; no issue-comment deletion; `force` bypasses marker; TOCTOU re-check; `permission-checks: write`.
 
 - [ ] TDD then implement, run `npm test`, commit.

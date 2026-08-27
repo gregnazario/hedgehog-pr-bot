@@ -1,5 +1,5 @@
 import { sign } from "node:crypto";
-import { isHedgehogLogin, parseSeverityPrefix } from "./signals.mjs";
+import { STILL_APPLIES_REPLY, isHedgehogLogin, parseSeverityPrefix } from "./signals.mjs";
 
 const apiVersion = "2022-11-28";
 
@@ -261,6 +261,7 @@ export class GitHubClient {
           side: comment.side === "LEFT" ? "LEFT" : "RIGHT",
           severity: parseSeverityPrefix(comment.body),
           body: comment.body,
+          alreadyReplied: hasStillAppliesReply(node.recentComments?.nodes),
         });
         if (threads.length >= 100) break;
       }
@@ -287,6 +288,12 @@ function githubHeaders(token) {
     "User-Agent": "greg-pr-bot",
     "X-GitHub-Api-Version": apiVersion,
   };
+}
+
+function hasStillAppliesReply(comments) {
+  return (comments ?? []).some((comment) => (
+    isHedgehogLogin(comment.author?.login) && String(comment.body ?? "").trim() === STILL_APPLIES_REPLY
+  ));
 }
 
 function repoPath(fullName) {
@@ -321,6 +328,12 @@ query HedgehogReviewThreads($owner: String!, $name: String!, $number: Int!, $cur
               line
               originalLine
               side
+              author { login }
+            }
+          }
+          recentComments: comments(last: 20) {
+            nodes {
+              body
               author { login }
             }
           }

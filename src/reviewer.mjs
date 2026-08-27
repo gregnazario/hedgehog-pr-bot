@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { markerPrefix } from "./config.mjs";
+import { reviewMarker } from "./config.mjs";
 import { annotateDiff, indexDiffLocations } from "./diff.mjs";
 import { finishProgress } from "./progress.mjs";
 import { buildReviewBody, parseReviewOutput, toReviewComments } from "./review-format.mjs";
@@ -8,7 +8,9 @@ import {
   applyThreadDecisions,
   checkOutcome,
   collectSeverities,
+  isHedgehogLogin,
   reviewEventFromSeverities,
+  reviewHasCurrentMarker,
 } from "./signals.mjs";
 
 export async function reviewPullRequest({
@@ -60,7 +62,7 @@ async function runReview({ client, fullName, number, config, force, runModel, lo
   if (pullRequest.draft) return { status: "skipped_draft" };
   if (pullRequest.user?.login?.toLowerCase() !== config.author) return { status: "skipped_author" };
 
-  const marker = `${markerPrefix}head:${pullRequest.head.sha} config:${config.fingerprint} -->`;
+  const marker = reviewMarker(pullRequest.head.sha, config.fingerprint);
   if (!force && await hasCurrentMarker(client, fullName, number, marker)) {
     return { status: "skipped_current", headSha: pullRequest.head.sha };
   }
@@ -100,8 +102,6 @@ async function runReview({ client, fullName, number, config, force, runModel, lo
     newFindings: decisions.newFindings,
     movedFindings: decisions.movedFindings,
     stillReplies: decisions.stillReplies,
-    unmapped,
-    overflow,
   });
   const event = reviewEventFromSeverities(severities);
   const clean = event === "APPROVE";
@@ -276,12 +276,13 @@ async function loadThreads(client, fullName, number, logger) {
 
 async function hasCurrentMarker(client, fullName, number, marker) {
   const reviews = await client.listPullRequestReviews(fullName, number);
-  return reviews.some((review) => review.user?.type === "Bot" && review.body?.startsWith(marker));
+  return reviewHasCurrentMarker(reviews, marker);
 }
 
 async function followUpThreads(client, { fullName, number, stillReplies, addressed, logger }) {
   if (typeof client.createPullRequestReviewCommentReply === "function") {
     for (const thread of stillReplies) {
+      if (thread.alreadyReplied) continue;
       try {
         await client.createPullRequestReviewCommentReply(fullName, number, thread.commentId, STILL_APPLIES_REPLY);
       } catch (error) {
@@ -305,7 +306,7 @@ async function dismissBlockingReviews(client, fullName, number, logger) {
   try {
     const reviews = await client.listPullRequestReviews(fullName, number);
     for (const review of reviews) {
-      if (review.user?.type !== "Bot" || review.state !== "CHANGES_REQUESTED") continue;
+      if (!isHedgehogLogin(review.user?.login) || review.state !== "CHANGES_REQUESTED") continue;
       try {
         await client.dismissPullRequestReview(
           fullName,

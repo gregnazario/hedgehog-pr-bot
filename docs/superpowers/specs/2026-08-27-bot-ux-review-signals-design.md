@@ -8,7 +8,7 @@ Approach: single Pi pass (diff + current unresolved hedgehog threads in one JSON
 
 Make hedgehog’s review cycle visible and actionable on the PR without extra merge-gating from the check:
 
-- Show 👀 and a pending `Pi review` check as soon as a review is accepted.
+- Show 👀 and a pending `Pi review` check when the worker starts a review (before Pi).
 - Finish with a check title that is ❌ (runner failed), ⚠️ (Critical/High), ℹ️ (Medium/Low only), or ✅ (clean).
 - APPROVE only when the pass is clean; REQUEST_CHANGES while Critical/High remain; COMMENT for Medium/Low only and clear blocking when Critical/High are gone.
 - Ask Pi which previous hedgehog threads are fixed vs still valid; resolve or reply in one pass.
@@ -29,13 +29,15 @@ Make hedgehog’s review cycle visible and actionable on the PR without extra me
 
 Same process as today: HTTPS webhook, serial in-memory queue (newest head wins per `fullName#number`), hourly recovery scan. Other authors still exit before any GitHub write.
 
-On a job we will actually run (open, ready, author matches `PR_AUTHOR`, no `skip-review`):
+The HTTP webhook only verifies the signature, parses the event, and enqueues. It returns 202 without calling GitHub, so delivery stays under GitHub’s ~10s timeout. Progress starts when the **queue worker** (or hourly scan) picks up a job it will actually run (open, ready, author matches `PR_AUTHOR`, no `skip-review`, and not already reviewed for this head+config unless `force`):
 
-1. **Immediate** (webhook accept or scan start, before Pi): add 👀 on the PR; create a check run on the head SHA, name `Pi review`, status `in_progress`, title `👀 Reviewing…`. Put `checkRunId` and the 👀 reaction id on the job.
+1. **Start** (worker/scan, before Pi): add 👀 on the PR; create a check run on the head SHA, name `Pi review`, status `in_progress`, title `👀 Reviewing…`. Put `checkRunId` and the 👀 reaction id on the running job.
 2. **Work:** fetch diff and unresolved hedgehog review threads; one Pi pass; post the GitHub review; reply/resolve threads; dismiss blocking REQUEST_CHANGES if needed.
 3. **Finish:** delete the 👀 reaction; patch the check to ❌ / ⚠️ / ℹ️ / ✅.
 
-If several events pile up for one PR, keep only the newest head. A GitHub check run is bound to the SHA it was created with and cannot be retargeted. If a queued job is replaced before Pi starts, mark the old check `cancelled`, create a new `in_progress` check on the new SHA, and keep the existing 👀 (do not add a second). If hedgehog already has 👀 on the PR, reuse that reaction id.
+If this head+config already has a hedgehog review marker and the job is not `force`, skip 👀 and the check entirely (do not overwrite a real ✅/⚠️ with “Already reviewed”).
+
+If several events pile up for one PR, keep only the newest head. A GitHub check run is bound to the SHA it was created with and cannot be retargeted. Progress is created at run time, so a still-queued job usually has no check to cancel. If a queued job that already opened a check is replaced before Pi starts, mark the old check `cancelled`, create a new `in_progress` check on the new SHA, and keep the existing 👀 (do not add a second). If hedgehog already has 👀 on the PR, reuse that reaction id.
 
 `/review` enqueues with `force: true` and bypasses the “already reviewed this head + config” skip. `skip-review` means do not enqueue, do not 👀, do not open a check. If a run is already in flight when the label is added, that run finishes; the next event does not start another.
 
@@ -76,7 +78,7 @@ Pi still returns one JSON object. The prompt includes current **unresolved hedge
 | --- | --- |
 | `findings` | New issues only. Do not restate an open thread here. |
 | `addressed_comment_ids` | Resolve those threads. Do not reopen already-resolved threads. |
-| `still_applies` with only `id` | Reply `Still applies.` on that thread. No new inline comment. |
+| `still_applies` with only `id` | Reply `Still applies.` on that thread unless hedgehog already posted that reply. No new inline comment. |
 | `still_applies` with new path/line | Line moved: post a new inline comment there. Do not also reply on the old thread. Leave the old thread open (GitHub marks it outdated). |
 
 Review event and check severity use **new findings + still-applies** (including moved). A leftover High still means REQUEST_CHANGES even if no new thread was opened.
@@ -93,7 +95,7 @@ Each successful pass posts **one new review**. Older hedgehog reviews stay in th
 | --- | --- | --- |
 | No findings and no still-applies | **APPROVE**. Body includes “No new findings.” | Unblocked. APPROVE from hedgehog supersedes an earlier hedgehog REQUEST_CHANGES. |
 | Any Critical or High (new or still-applies) | **REQUEST_CHANGES** | Blocked |
-| Only Medium/Low | **COMMENT** | Must not stay blocked: **dismiss** every outstanding hedgehog review with state `CHANGES_REQUESTED` (they remain visible as dismissed). |
+| Only Medium/Low | **COMMENT** | Must not stay blocked: **dismiss** every outstanding **hedgehog** review with state `CHANGES_REQUESTED` (leave other bots alone; they remain visible as dismissed). Do not APPROVE just to unblock. |
 
 Review body, in order:
 
@@ -116,12 +118,12 @@ Thread list for the prompt uses GraphQL (unresolved threads whose first comment 
 
 ## Checks and reactions
 
-One check run per accepted job, name **`Pi review`**. Create it immediately; patch the same `checkRunId` at finish. `/review` on an already-finished SHA creates a new check run with the same name (GitHub shows the latest).
+One check run per job the worker actually starts, name **`Pi review`**. Create it when the worker starts, not in the webhook handler; patch the same `checkRunId` at finish. `/review` on an already-finished SHA creates a new check run with the same name (GitHub shows the latest).
 
 | When | 👀 | Check |
 | --- | --- | --- |
-| Job accepted | `POST /repos/{owner}/{repo}/issues/{number}/reactions` `{ "content": "eyes" }` | `status: in_progress`, title `👀 Reviewing…` |
-| Pi or GitHub flow throws | Delete that 👀 | `conclusion: failure`, title `❌ Review failed`, summary = error text with secrets stripped |
+| Worker starts a runnable job | `POST /repos/{owner}/{repo}/issues/{number}/reactions` `{ "content": "eyes" }` | `status: in_progress`, title `👀 Reviewing…` |
+| Pi or GitHub flow throws | Delete that 👀 | `conclusion: failure`, title `❌ Review failed`, summary = sanitized error in a fenced block (strip ANSI/control/backticks, truncate) |
 | Any Critical or High | Delete 👀 | `conclusion: action_required` (not `failure`), title `⚠️ {n} high/critical` |
 | Only Medium/Low | Delete 👀 | `conclusion: success`, title `ℹ️ {n} comments` |
 | Clean | Delete 👀 | `conclusion: success`, title `✅ No new findings` |
@@ -141,7 +143,7 @@ Only `PR_AUTHOR` (`gregnazario` by default). Everyone else is ignored (202, `acc
 - Webhook: `issue_comment` `created` on a pull request.
 - First whitespace-separated token of the comment body is exactly `/review`. Extra text after it is ignored. `/review-foo` does not match.
 - Same enqueue as `synchronize`, with `force: true`.
-- No-op on drafts, other authors’ PRs, or if `skip-review` is present.
+- `issue_comment` payloads do not include `issue.draft` or `pull_request.head`. Parse `/review`, author, `issue.labels`, and `issue.pull_request` existence only; the worker fetches the PR and no-ops on drafts, other authors, or a later `skip-review`.
 
 **`skip-review` label**
 
@@ -163,10 +165,13 @@ Only `PR_AUTHOR` (`gregnazario` by default). Everyone else is ignored (202, `acc
 
 Extend the Node test suite. No live GitHub or Pi.
 
-- Webhook: `/review` from the author enqueues with `force`; from anyone else, or on draft/`skip-review`, it does not. `labeled` `skip-review` does not enqueue; `unlabeled` does not auto-enqueue.
+- Webhook: `/review` from the author enqueues with `force` without reading draft/head from the issue payload; from anyone else or `skip-review` it does not. Worker skips drafts. `labeled` `skip-review` does not enqueue; `unlabeled` does not auto-enqueue.
+- Webhook handler returns 202 after enqueue and does not wait on GitHub.
 - Review event: clean → APPROVE; Critical/High → REQUEST_CHANGES; Medium/Low → COMMENT and dismiss prior hedgehog `CHANGES_REQUESTED`.
-- Threads: addressed ids resolve; id-only still-applies replies `Still applies.`; moved still-applies posts a new comment and does not reply; unknown ids ignored.
-- Checks/reactions: 👀 + in_progress at start; titles/conclusions for fail / ⚠️ / ℹ️ / ✅; 👀 removed on finish; skip-review and drafts never write them.
+- Threads: addressed ids resolve; id-only still-applies replies `Still applies.` unless already replied; moved still-applies posts a new comment and does not reply; unknown ids ignored.
+- Checks/reactions: 👀 + in_progress when the worker starts a runnable job; already-reviewed heads skip progress unless `force`; titles/conclusions for fail / ⚠️ / ℹ️ / ✅; 👀 removed on finish; skip-review and drafts never write them.
+- Dismiss: only hedgehog `CHANGES_REQUESTED`, not other bots.
+- Tally/check counts: new + moved + still-applies once; do not add unmapped/overflow.
 - Format: tally line present; “N inline comments were left” gone; clean body includes “No new findings.”
 - Idempotency: marker skip unless `force`; marker re-check before create; failed Pi run does not post a marker.
 

@@ -2,6 +2,10 @@ import { createHash } from "node:crypto";
 
 export const markerPrefix = "<!-- greg-pr-bot-review ";
 
+export function reviewMarker(headSha, fingerprint) {
+  return `${markerPrefix}head:${headSha} config:${fingerprint} -->`;
+}
+
 export function positiveInteger(value, fallback) {
   const parsed = Number.parseInt(value ?? "", 10);
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;

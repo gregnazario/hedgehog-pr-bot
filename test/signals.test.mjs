@@ -6,11 +6,14 @@ import {
   STILL_APPLIES_REPLY,
   applyThreadDecisions,
   checkOutcome,
+  collectSeverities,
   hasSkipReviewLabel,
   isHedgehogLogin,
   isReviewCommand,
   parseSeverityPrefix,
   reviewEventFromSeverities,
+  reviewHasCurrentMarker,
+  sanitizeCheckText,
   tallyLine,
 } from "../src/signals.mjs";
 
@@ -81,6 +84,59 @@ test("thread decisions resolve, reply, move, and drop unknown ids", () => {
   }]);
 });
 
+test("same path and line on LEFT vs RIGHT are distinct locations", () => {
+  const result = applyThreadDecisions({
+    findings: [
+      { severity: "Low", path: "a.mjs", line: 1, side: "LEFT", body: "left" },
+      { severity: "Low", path: "a.mjs", line: 1, side: "RIGHT", body: "right" },
+    ],
+    stillApplies: [{ id: 1 }],
+    threads: [{
+      commentId: 1,
+      path: "a.mjs",
+      line: 1,
+      side: "RIGHT",
+      severity: "High",
+      body: "**High:** still",
+    }],
+  });
+  assert.deepEqual(result.newFindings, [{
+    severity: "Low",
+    path: "a.mjs",
+    line: 1,
+    side: "LEFT",
+    body: "left",
+  }]);
+  assert.equal(result.stillReplies.length, 1);
+});
+
+test("collectSeverities counts each finding once and ignores unmapped extras", () => {
+  const finding = { severity: "High", path: "a.mjs", line: 1 };
+  assert.deepEqual(collectSeverities({
+    newFindings: [finding],
+    movedFindings: [],
+    stillReplies: [{ severity: "Low" }],
+    unmapped: [finding],
+    overflow: [finding],
+  }), ["High", "Low"]);
+});
+
+test("review marker matches hedgehog or generic bot bodies", () => {
+  const marker = "<!-- greg-pr-bot-review head:abc config:fp -->";
+  assert.equal(reviewHasCurrentMarker([{
+    user: { type: "Bot" },
+    body: `${marker}\ndone`,
+  }], marker), true);
+  assert.equal(reviewHasCurrentMarker([{
+    user: { login: "hedgehog-pr-bot[bot]" },
+    body: `${marker}\ndone`,
+  }], marker), true);
+  assert.equal(reviewHasCurrentMarker([{
+    user: { type: "User", login: "gregnazario" },
+    body: `${marker}\ndone`,
+  }], marker), false);
+});
+
 test("review event follows clean / high / medium-low rules", () => {
   assert.equal(reviewEventFromSeverities([]), "APPROVE");
   assert.equal(reviewEventFromSeverities(["High"]), "REQUEST_CHANGES");
@@ -100,7 +156,7 @@ test("check outcome never fails on findings", () => {
   assert.deepEqual(checkOutcome({ failed: true, errorMessage: "Pi exited" }), {
     conclusion: "failure",
     title: "❌ Review failed",
-    summary: "Pi exited",
+    summary: "```\nPi exited\n```",
   });
   assert.equal(checkOutcome({ severities: ["High", "Low"] }).conclusion, "action_required");
   assert.match(checkOutcome({ severities: ["High", "Low"] }).title, /⚠️ 1 high\/critical/);
@@ -111,4 +167,17 @@ test("check outcome never fails on findings", () => {
     title: "✅ No new findings",
     summary: "No new findings.",
   });
+});
+
+test("failure check summaries strip fences, ANSI, and extra length", () => {
+  assert.equal(sanitizeCheckText("bad ``` injection"), "bad  injection");
+  const outcome = checkOutcome({
+    failed: true,
+    errorMessage: `\u001b[31msecret\u001b[0m\n\`\`\`\n${"x".repeat(600)}`,
+  });
+  assert.equal(outcome.summary.startsWith("```\n"), true);
+  assert.equal(outcome.summary.endsWith("\n```"), true);
+  assert.doesNotMatch(outcome.summary.slice(4, -4), /```/);
+  assert.equal(outcome.summary.includes("secret"), true);
+  assert.equal(outcome.summary.length <= 500 + "```\n\n```".length, true);
 });

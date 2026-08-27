@@ -67,12 +67,27 @@ test("enqueues /review from the author with force", () => {
     fullName: "gregnazario/example",
     number: 42,
     installationId: 123,
-    headSha: undefined,
     force: true,
   });
 });
 
-test("ignores /review from other users, drafts, skip-review, and lookalikes", () => {
+test("issue_comment /review ignores missing draft/head fields and still enqueues", () => {
+  const payload = {
+    action: "created",
+    installation: { id: 123 },
+    repository: { full_name: "gregnazario/example" },
+    comment: { body: "/review", user: { login: "gregnazario" } },
+    issue: {
+      number: 42,
+      user: { login: "gregnazario" },
+      labels: [],
+      pull_request: { url: "https://api.github.com/repos/gregnazario/example/pulls/42" },
+    },
+  };
+  assert.equal(reviewJobFromWebhook("issue_comment", payload, "gregnazario").force, true);
+});
+
+test("ignores /review from other users, skip-review, and lookalikes", () => {
   const base = {
     action: "created",
     installation: { id: 123 },
@@ -80,7 +95,6 @@ test("ignores /review from other users, drafts, skip-review, and lookalikes", ()
     comment: { body: "/review", user: { login: "gregnazario" } },
     issue: {
       number: 42,
-      draft: false,
       user: { login: "gregnazario" },
       labels: [],
       pull_request: {},
@@ -93,10 +107,6 @@ test("ignores /review from other users, drafts, skip-review, and lookalikes", ()
   assert.equal(reviewJobFromWebhook("issue_comment", {
     ...base,
     comment: { body: "/review-foo", user: { login: "gregnazario" } },
-  }, "gregnazario"), null);
-  assert.equal(reviewJobFromWebhook("issue_comment", {
-    ...base,
-    issue: { ...base.issue, draft: true },
   }, "gregnazario"), null);
   assert.equal(reviewJobFromWebhook("issue_comment", {
     ...base,

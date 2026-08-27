@@ -30,7 +30,6 @@ function reviewJobFromComment(payload, author) {
   if (!isReviewCommand(payload.comment?.body)) return null;
   if (payload.comment?.user?.login?.toLowerCase() !== author.toLowerCase()) return null;
   if (hasSkipReviewLabel(payload.issue.labels)) return null;
-  if (payload.issue.draft) return null;
   const fullName = payload.repository?.full_name;
   const installationId = payload.installation?.id;
   const number = payload.issue?.number;
@@ -41,7 +40,6 @@ function reviewJobFromComment(payload, author) {
     fullName,
     number,
     installationId,
-    headSha: payload.issue.pull_request.head?.sha,
     force: true,
   };
 }

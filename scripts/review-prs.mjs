@@ -33,7 +33,11 @@ for (const repository of repositories.sort((a, b) => a.full_name.localeCompare(b
         fullName: repository.full_name,
         number: pullRequest.number,
         headSha: pullRequest.head?.sha,
-      }, config.author);
+      }, {
+        author: config.author,
+        fingerprint: config.fingerprint,
+        force: false,
+      });
       if (!prepared) continue;
       const result = await reviewPullRequest({
         client,

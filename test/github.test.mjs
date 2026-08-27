@@ -168,62 +168,101 @@ test("dismisses a review and replies to a thread", async () => {
 });
 
 test("lists unresolved hedgehog threads and ignores other bots", async () => {
-  const client = new GitHubClient("token", async () => new Response(JSON.stringify({
-    data: {
-      repository: {
-        pullRequest: {
-          reviewThreads: {
-            pageInfo: { hasNextPage: false, endCursor: null },
-            nodes: [
-              {
-                id: "T1",
-                isResolved: false,
-                comments: {
-                  nodes: [{
-                    databaseId: 101,
-                    body: "**High:** leak",
-                    path: "a.mjs",
-                    line: 4,
-                    side: "RIGHT",
-                    author: { login: "hedgehog-pr-bot[bot]" },
-                  }],
+  let query;
+  const client = new GitHubClient("token", async (_url, options) => {
+    query = JSON.parse(options.body).query;
+    return new Response(JSON.stringify({
+      data: {
+        repository: {
+          pullRequest: {
+            reviewThreads: {
+              pageInfo: { hasNextPage: false, endCursor: null },
+              nodes: [
+                {
+                  id: "T1",
+                  isResolved: false,
+                  comments: {
+                    nodes: [{
+                      databaseId: 101,
+                      body: "**High:** leak",
+                      path: "a.mjs",
+                      line: 4,
+                      side: "RIGHT",
+                      author: { login: "hedgehog-pr-bot[bot]" },
+                    }],
+                  },
+                  recentComments: {
+                    nodes: [{
+                      body: "**High:** leak",
+                      author: { login: "hedgehog-pr-bot[bot]" },
+                    }],
+                  },
                 },
-              },
-              {
-                id: "T2",
-                isResolved: false,
-                comments: {
-                  nodes: [{
-                    databaseId: 202,
-                    body: "unrelated",
-                    path: "b.mjs",
-                    line: 1,
-                    side: "RIGHT",
-                    author: { login: "cursor[bot]" },
-                  }],
+                {
+                  id: "T2",
+                  isResolved: false,
+                  comments: {
+                    nodes: [{
+                      databaseId: 202,
+                      body: "unrelated",
+                      path: "b.mjs",
+                      line: 1,
+                      side: "RIGHT",
+                      author: { login: "cursor[bot]" },
+                    }],
+                  },
+                  recentComments: { nodes: [] },
                 },
-              },
-              {
-                id: "T3",
-                isResolved: true,
-                comments: {
-                  nodes: [{
-                    databaseId: 303,
-                    body: "**Low:** fixed",
-                    path: "c.mjs",
-                    line: 1,
-                    side: "RIGHT",
-                    author: { login: "hedgehog-pr-bot[bot]" },
-                  }],
+                {
+                  id: "T3",
+                  isResolved: true,
+                  comments: {
+                    nodes: [{
+                      databaseId: 303,
+                      body: "**Low:** fixed",
+                      path: "c.mjs",
+                      line: 1,
+                      side: "RIGHT",
+                      author: { login: "hedgehog-pr-bot[bot]" },
+                    }],
+                  },
+                  recentComments: { nodes: [] },
                 },
-              },
-            ],
+                {
+                  id: "T4",
+                  isResolved: false,
+                  comments: {
+                    nodes: [{
+                      databaseId: 404,
+                      body: "**Low:** still",
+                      path: "d.mjs",
+                      line: 2,
+                      side: "RIGHT",
+                      author: { login: "hedgehog-pr-bot[bot]" },
+                    }],
+                  },
+                  recentComments: {
+                    nodes: [
+                      {
+                        body: "**Low:** still",
+                        author: { login: "hedgehog-pr-bot[bot]" },
+                      },
+                      {
+                        body: "Still applies.",
+                        author: { login: "hedgehog-pr-bot[bot]" },
+                      },
+                    ],
+                  },
+                },
+              ],
+            },
           },
         },
       },
-    },
-  }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  });
   const threads = await client.listUnresolvedHedgehogThreads("gregnazario/example", 7);
+  assert.match(query, /recentComments: comments\(last: 20\)/);
   assert.deepEqual(threads, [{
     commentId: 101,
     threadId: "T1",
@@ -232,5 +271,15 @@ test("lists unresolved hedgehog threads and ignores other bots", async () => {
     side: "RIGHT",
     severity: "High",
     body: "**High:** leak",
+    alreadyReplied: false,
+  }, {
+    commentId: 404,
+    threadId: "T4",
+    path: "d.mjs",
+    line: 2,
+    side: "RIGHT",
+    severity: "Low",
+    body: "**Low:** still",
+    alreadyReplied: true,
   }]);
 });

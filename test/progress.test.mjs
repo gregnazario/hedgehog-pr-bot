@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { cancelQueuedProgress, finishProgress, startProgress } from "../src/progress.mjs";
+import { cancelQueuedProgress, finishProgress, prepareAcceptedJob, startProgress } from "../src/progress.mjs";
 
 test("startProgress reuses existing hedgehog eyes and opens an in-progress check", async () => {
   const calls = [];
@@ -49,4 +49,57 @@ test("cancelQueuedProgress marks the old check cancelled", async () => {
     updateCheckRun: async (_repo, id, payload) => (updated = payload),
   }, { fullName: "gregnazario/example", checkRunId: 12 });
   assert.equal(updated.conclusion, "cancelled");
+});
+
+function reviewableClient(overrides = {}) {
+  return {
+    getPullRequest: async () => ({
+      state: "open",
+      draft: false,
+      user: { login: "gregnazario" },
+      head: { sha: "abc" },
+    }),
+    listIssueLabels: async () => [],
+    listIssueReactions: async () => [],
+    createIssueReaction: async () => ({ id: 2 }),
+    createCheckRun: async () => ({ id: 1 }),
+    listPullRequestReviews: async () => [],
+    ...overrides,
+  };
+}
+
+test("prepareAcceptedJob starts progress for a reviewable PR", async () => {
+  const prepared = await prepareAcceptedJob(
+    reviewableClient(),
+    { fullName: "gregnazario/example", number: 7, force: false },
+    { author: "gregnazario", fingerprint: "fp" },
+  );
+  assert.equal(prepared.headSha, "abc");
+  assert.equal(prepared.checkRunId, 1);
+  assert.equal(prepared.eyesReactionId, 2);
+});
+
+test("prepareAcceptedJob skips already-reviewed heads unless force", async () => {
+  let created = false;
+  const client = reviewableClient({
+    listPullRequestReviews: async () => [{
+      user: { type: "Bot", login: "hedgehog-pr-bot[bot]" },
+      body: "<!-- greg-pr-bot-review head:abc config:fp -->\ndone",
+    }],
+    createCheckRun: async () => {
+      created = true;
+      return { id: 1 };
+    },
+  });
+  assert.equal(await prepareAcceptedJob(client, {
+    fullName: "gregnazario/example",
+    number: 7,
+  }, { author: "gregnazario", fingerprint: "fp" }), null);
+  assert.equal(created, false);
+  const prepared = await prepareAcceptedJob(client, {
+    fullName: "gregnazario/example",
+    number: 7,
+  }, { author: "gregnazario", fingerprint: "fp", force: true });
+  assert.equal(prepared.checkRunId, 1);
+  assert.equal(created, true);
 });
