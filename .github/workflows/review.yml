@@ -36,6 +36,7 @@ jobs:
           permission-contents: read
           permission-issues: write
           permission-pull-requests: write
+          permission-checks: write
 
       - name: Install Pi
         run: npm install --global --ignore-scripts @earendil-works/pi-coding-agent@0.84.2

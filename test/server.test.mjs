@@ -38,3 +38,116 @@ test("serves health checks and authenticates webhook pings", async (t) => {
   });
   assert.equal(rejected.status, 401);
 });
+
+test("accepted pull_request webhook starts a check and queues the review", async (t) => {
+  const secret = "test-secret";
+  const checks = [];
+  const { server, queue } = createAppServer({
+    webhookSecret: secret,
+    tokenProvider: { get: async () => "token" },
+    reviewConfig: { author: "gregnazario", fingerprint: "abc123", models: [], maxDiffChars: 1000 },
+    logger: { log() {}, error() {} },
+    createClient: () => ({
+      getPullRequest: async () => ({
+        state: "open",
+        draft: false,
+        user: { login: "gregnazario" },
+        head: { sha: "abcdef1dead" },
+      }),
+      listIssueLabels: async () => [],
+      listIssueReactions: async () => [],
+      createIssueReaction: async () => ({ id: 1 }),
+      createCheckRun: async (_repo, payload) => {
+        checks.push(payload);
+        return { id: 9 };
+      },
+      listPullRequestReviews: async () => [{
+        user: { type: "Bot" },
+        body: "<!-- greg-pr-bot-review head:abcdef1dead config:abc123 -->\ndone",
+      }],
+      updateCheckRun: async () => {},
+      deleteIssueReaction: async () => {},
+    }),
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const { port } = server.address();
+  const payload = JSON.stringify({
+    action: "synchronize",
+    number: 7,
+    installation: { id: 1 },
+    repository: { full_name: "gregnazario/example" },
+    pull_request: {
+      draft: false,
+      user: { login: "gregnazario" },
+      head: { sha: "abcdef1dead" },
+      labels: [],
+    },
+  });
+  const body = Buffer.from(payload);
+  const signature = `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`;
+  const response = await fetch(`http://127.0.0.1:${port}/github/webhook`, {
+    method: "POST",
+    headers: {
+      "X-GitHub-Event": "pull_request",
+      "X-Hub-Signature-256": signature,
+    },
+    body,
+  });
+  assert.equal(response.status, 202);
+  assert.deepEqual(await response.json(), { accepted: true });
+  assert.equal(checks.length, 1);
+  assert.equal(checks[0].name, "Pi review");
+  await queue.onIdle();
+});
+
+test("does not start progress for skip-review PRs", async (t) => {
+  const secret = "test-secret";
+  let checked = false;
+  const { server } = createAppServer({
+    webhookSecret: secret,
+    tokenProvider: { get: async () => "token" },
+    reviewConfig: { author: "gregnazario" },
+    logger: { log() {}, error() {} },
+    createClient: () => ({
+      getPullRequest: async () => ({
+        state: "open",
+        draft: false,
+        user: { login: "gregnazario" },
+        head: { sha: "abc" },
+      }),
+      listIssueLabels: async () => [{ name: "skip-review" }],
+      createCheckRun: async () => {
+        checked = true;
+      },
+    }),
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const { port } = server.address();
+  const payload = JSON.stringify({
+    action: "opened",
+    number: 7,
+    installation: { id: 1 },
+    repository: { full_name: "gregnazario/example" },
+    pull_request: {
+      draft: false,
+      user: { login: "gregnazario" },
+      head: { sha: "abc" },
+      labels: [{ name: "skip-review" }],
+    },
+  });
+  const body = Buffer.from(payload);
+  const signature = `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`;
+  const response = await fetch(`http://127.0.0.1:${port}/github/webhook`, {
+    method: "POST",
+    headers: {
+      "X-GitHub-Event": "pull_request",
+      "X-Hub-Signature-256": signature,
+    },
+    body,
+  });
+  assert.equal(response.status, 202);
+  assert.deepEqual(await response.json(), { accepted: false });
+  assert.equal(checked, false);
+});

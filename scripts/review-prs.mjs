@@ -2,6 +2,7 @@
 
 import { loadReviewConfig, positiveInteger } from "../src/config.mjs";
 import { GitHubClient } from "../src/github.mjs";
+import { prepareAcceptedJob } from "../src/progress.mjs";
 import { reviewPullRequest } from "../src/reviewer.mjs";
 
 if (!process.env.GH_TOKEN) throw new Error("GH_TOKEN is required");
@@ -28,11 +29,19 @@ for (const repository of repositories.sort((a, b) => a.full_name.localeCompare(b
     if (reviewed >= maxReviews) break;
     if (pullRequest.draft || pullRequest.user?.login?.toLowerCase() !== config.author) continue;
     try {
+      const prepared = await prepareAcceptedJob(client, {
+        fullName: repository.full_name,
+        number: pullRequest.number,
+        headSha: pullRequest.head?.sha,
+      }, config.author);
+      if (!prepared) continue;
       const result = await reviewPullRequest({
         client,
         fullName: repository.full_name,
         number: pullRequest.number,
         config,
+        checkRunId: prepared.checkRunId,
+        eyesReactionId: prepared.eyesReactionId,
       });
       if (result.status === "reviewed") reviewed += 1;
     } catch (error) {

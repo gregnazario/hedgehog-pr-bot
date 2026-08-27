@@ -6,13 +6,16 @@ GLM-5.3 through a Z.AI Coding Plan subscription, and the model list is configura
 
 The bot is event driven. A single long-running server receives GitHub App webhooks and
 queues a review immediately when one of your PRs is opened, reopened, marked ready, or
-updated with new commits. Findings are posted as GitHub review comments on the changed
-lines, with a short summary on the review itself, rather than one large issue comment.
-No workflow file is needed in the repositories being reviewed.
+updated with new commits. It adds a 👀 reaction and a pending **Pi review** check while
+Pi runs, then posts findings as GitHub review comments on the changed lines with a short
+summary on the review itself. No workflow file is needed in the repositories being
+reviewed.
 
 An hourly GitHub Actions scan remains as a recovery path for deliveries missed while the
 server is unavailable. The review marker makes both paths idempotent, so they do not post
-duplicate reviews for the same PR head and model configuration.
+duplicate reviews for the same PR head and model configuration. Comment `/review` on a PR
+to force another pass of the current head. Add the `skip-review` label to silence hedgehog
+on that PR.
 
 ## What it reviews
 
@@ -21,9 +24,16 @@ duplicate reviews for the same PR head and model configuration.
 - Performance and scalability problems
 - Reliability, maintainability, and general code quality
 
-Draft PRs and PRs opened by other authors are skipped. Reviews run sequentially to avoid
-overloading the Coding Plan. If several events for one PR are waiting, only the newest is
-kept; the reviewer fetches the current PR state again before running Pi.
+Draft PRs and PRs opened by other authors are skipped (no 👀, no check). Reviews run
+sequentially to avoid overloading the Coding Plan. If several events for one PR are
+waiting, only the newest is kept; the reviewer fetches the current PR state again before
+running Pi.
+
+A clean pass **approves** with “No new findings.” Critical or High findings
+**request changes**. Medium or Low only **comment**, and hedgehog dismisses its own
+outstanding change requests so they do not keep blocking. The check concludes
+`action_required` (⚠️) for Critical/High, `success` (ℹ️ or ✅) otherwise, and `failure`
+(❌) only when Pi or GitHub breaks.
 
 ## Run the server
 
@@ -46,7 +56,7 @@ credentials.
    ```
 
 5. In the GitHub App settings, enable webhooks, enter that URL and the exact same webhook
-   secret, then subscribe to **Pull request** events.
+   secret, then subscribe to **Pull request** and **Issue comment** events.
 6. Check `https://ms.sed.fyi/healthz`; it should return `{"ok":true,...}`.
 
 The Compose service restarts automatically, runs read-only as an unprivileged user, drops
@@ -59,8 +69,12 @@ use `BIND_PORT` to change the host-side port.
 Install the App on all repositories to review, or select a smaller set. It needs:
 
 - Contents: read
-- Issues: read and write
-- Pull requests: read and write
+- Issues: read and write (needed to read `/review` comments)
+- Pull requests: read and write (reviews, dismissals, replies, and the 👀 reaction)
+- Checks: write (the `Pi review` check run)
+
+There is no separate Reactions permission in GitHub App settings. Approving the extra
+Checks permission on each installation is required after you add it.
 
 To add future repositories, update the App installation. No repository code change is
 needed.
@@ -126,7 +140,8 @@ The queue is intentionally in memory. GitHub retries failed webhook deliveries, 
 hourly workflow reconciles open PRs after an outage. Large diffs are capped at four million
 characters; split very large changes into smaller PRs for more focused feedback. Inline
 comments are only attached to lines that appear in the pull request diff; anything the
-model cannot place is kept in the review summary.
+model cannot place is kept in the review summary. Previous hedgehog threads that are still
+valid get a “Still applies.” reply instead of a duplicate comment, unless the line moved.
 
 Run the test suite with Node.js 24 or newer:
 

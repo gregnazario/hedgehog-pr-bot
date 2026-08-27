@@ -269,6 +269,15 @@ export class GitHubClient {
     }
     return threads;
   }
+
+  resolveReviewThread(threadId) {
+    return this.graphql(
+      `mutation ResolveHedgehogThread($id: ID!) {
+        resolveReviewThread(input: { threadId: $id }) { thread { id isResolved } }
+      }`,
+      { id: threadId },
+    );
+  }
 }
 
 function githubHeaders(token) {
