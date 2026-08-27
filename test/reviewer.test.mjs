@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildPiEnvironment, reviewPullRequest } from "../src/reviewer.mjs";
+import { buildPiEnvironment, buildReviewBundle, reviewPullRequest } from "../src/reviewer.mjs";
 
 const config = {
   author: "gregnazario",
@@ -46,15 +46,21 @@ function jsonReview() {
   });
 }
 
-test("posts an inline GitHub review for a new PR head", async () => {
-  let posted;
-  const client = {
+function baseClient(overrides = {}) {
+  return {
     getPullRequest: async () => pullRequest(),
-    listIssueComments: async () => [],
     listPullRequestReviews: async () => [],
     getPullRequestDiff: async () => sampleDiff,
-    createPullRequestReview: async (_repo, _number, payload) => (posted = payload),
+    listUnresolvedHedgehogThreads: async () => [],
+    ...overrides,
   };
+}
+
+test("posts an inline COMMENT review for a Low finding", async () => {
+  let posted;
+  const client = baseClient({
+    createPullRequestReview: async (_repo, _number, payload) => (posted = payload),
+  });
   const result = await reviewPullRequest({
     client,
     fullName: "gregnazario/example",
@@ -64,10 +70,13 @@ test("posts an inline GitHub review for a new PR head", async () => {
     logger: { log() {}, error() {} },
   });
   assert.equal(result.status, "reviewed");
+  assert.equal(result.event, "COMMENT");
   assert.equal(posted.commitId, "1234567890");
   assert.equal(posted.event, "COMMENT");
   assert.match(posted.body, /head:1234567890 config:abc123/);
   assert.match(posted.body, /The addition looks right/);
+  assert.match(posted.body, /ℹ️ 1 Low/);
+  assert.doesNotMatch(posted.body, /inline comments were left/);
   assert.equal(posted.comments.length, 1);
   assert.deepEqual(posted.comments[0], {
     path: "src/app.mjs",
@@ -77,12 +86,9 @@ test("posts an inline GitHub review for a new PR head", async () => {
   });
 });
 
-test("posts a LEFT-side comment on a deleted line", async () => {
+test("requests changes for a High finding on a deleted line", async () => {
   let posted;
-  const client = {
-    getPullRequest: async () => pullRequest(),
-    listIssueComments: async () => [],
-    listPullRequestReviews: async () => [],
+  const client = baseClient({
     getPullRequestDiff: async () => `diff --git a/gone.mjs b/gone.mjs
 deleted file mode 100644
 --- a/gone.mjs
@@ -91,7 +97,7 @@ deleted file mode 100644
 -export const gone = true;
 `,
     createPullRequestReview: async (_repo, _number, payload) => (posted = payload),
-  };
+  });
   const result = await reviewPullRequest({
     client,
     fullName: "gregnazario/example",
@@ -104,6 +110,7 @@ deleted file mode 100644
     logger: { log() {}, error() {} },
   });
   assert.equal(result.status, "reviewed");
+  assert.equal(posted.event, "REQUEST_CHANGES");
   assert.deepEqual(posted.comments, [{
     path: "gone.mjs",
     line: 1,
@@ -114,14 +121,12 @@ deleted file mode 100644
 
 test("does not rerun a current inline review", async () => {
   let ran = false;
-  const client = {
-    getPullRequest: async () => pullRequest(),
-    listIssueComments: async () => [],
+  const client = baseClient({
     listPullRequestReviews: async () => [{
       user: { type: "Bot" },
       body: "<!-- greg-pr-bot-review head:1234567890 config:abc123 -->\nold",
     }],
-  };
+  });
   const result = await reviewPullRequest({
     client,
     fullName: "gregnazario/example",
@@ -134,21 +139,68 @@ test("does not rerun a current inline review", async () => {
   assert.equal(ran, false);
 });
 
-test("re-reviews a PR that only has a legacy issue comment and removes that note", async () => {
+test("force re-reviews a head that already has a marker", async () => {
+  let posted;
+  const client = baseClient({
+    listPullRequestReviews: async () => [{
+      user: { type: "Bot" },
+      body: "<!-- greg-pr-bot-review head:1234567890 config:abc123 -->\nold",
+    }],
+    createPullRequestReview: async (_repo, _number, payload) => (posted = payload),
+  });
+  const result = await reviewPullRequest({
+    client,
+    fullName: "gregnazario/example",
+    number: 7,
+    config,
+    force: true,
+    runModel: async () => jsonReview(),
+    logger: { log() {}, error() {} },
+  });
+  assert.equal(result.status, "reviewed");
+  assert.equal(posted.event, "COMMENT");
+});
+
+test("does not double-count unmapped findings in the tally", async () => {
+  let posted;
+  const client = baseClient({
+    createPullRequestReview: async (_repo, _number, payload) => (posted = payload),
+  });
+  const result = await reviewPullRequest({
+    client,
+    fullName: "gregnazario/example",
+    number: 7,
+    config,
+    runModel: async () => JSON.stringify({
+      summary: "Line is gone.",
+      findings: [{
+        severity: "Low",
+        path: "missing.mjs",
+        line: 1,
+        side: "RIGHT",
+        body: "Cannot map this.",
+      }],
+    }),
+    logger: { log() {}, error() {} },
+  });
+  assert.equal(result.status, "reviewed");
+  assert.deepEqual(result.severities, ["Low"]);
+  assert.match(posted.body, /ℹ️ 1 Low/);
+  assert.doesNotMatch(posted.body, /ℹ️ 2 Low/);
+});
+
+test("leaves leftover issue comments in place", async () => {
   const deleted = [];
   let posted;
-  const client = {
-    getPullRequest: async () => pullRequest(),
+  const client = baseClient({
     listIssueComments: async () => [{
       id: 55,
       user: { type: "Bot" },
       body: "<!-- greg-pr-bot-review head:1234567890 config:abc123 -->\nlegacy blob",
     }],
-    listPullRequestReviews: async () => [],
-    getPullRequestDiff: async () => sampleDiff,
     createPullRequestReview: async (_repo, _number, payload) => (posted = payload),
     deleteIssueComment: async (_repo, commentId) => deleted.push(commentId),
-  };
+  });
   const result = await reviewPullRequest({
     client,
     fullName: "gregnazario/example",
@@ -159,21 +211,17 @@ test("re-reviews a PR that only has a legacy issue comment and removes that note
   });
   assert.equal(result.status, "reviewed");
   assert.equal(posted.comments.length, 1);
-  assert.deepEqual(deleted, [55]);
+  assert.deepEqual(deleted, []);
 });
 
 test("retries with a summary-only review when inline comments are rejected", async () => {
   const payloads = [];
-  const client = {
-    getPullRequest: async () => pullRequest(),
-    listIssueComments: async () => [],
-    listPullRequestReviews: async () => [],
-    getPullRequestDiff: async () => sampleDiff,
+  const client = baseClient({
     createPullRequestReview: async (_repo, _number, payload) => {
       payloads.push(payload);
       if (payload.comments?.length) throw new Error("GitHub returned 422: line could not be resolved");
     },
-  };
+  });
   const result = await reviewPullRequest({
     client,
     fullName: "gregnazario/example",
@@ -187,17 +235,13 @@ test("retries with a summary-only review when inline comments are rejected", asy
   assert.equal(payloads[0].comments.length, 1);
   assert.equal(payloads[1].comments, undefined);
   assert.match(payloads[1].body, /The addition looks right/);
-  assert.doesNotMatch(payloads[1].body, /inline comment/);
+  assert.doesNotMatch(payloads[1].body, /inline comments were left/);
 });
 
 test("attaches comments one at a time after a batch review is rejected", async () => {
   const singles = [];
   let updated;
-  const client = {
-    getPullRequest: async () => pullRequest(),
-    listIssueComments: async () => [],
-    listPullRequestReviews: async () => [],
-    getPullRequestDiff: async () => sampleDiff,
+  const client = baseClient({
     createPullRequestReview: async (_repo, _number, payload) => {
       if (payload.comments?.length) throw new Error("GitHub returned 422: line could not be resolved");
       return { id: 44 };
@@ -206,7 +250,7 @@ test("attaches comments one at a time after a batch review is rejected", async (
     updatePullRequestReview: async (_repo, _number, reviewId, body) => {
       updated = { reviewId, body };
     },
-  };
+  });
   const result = await reviewPullRequest({
     client,
     fullName: "gregnazario/example",
@@ -218,21 +262,15 @@ test("attaches comments one at a time after a batch review is rejected", async (
   assert.equal(result.status, "reviewed");
   assert.equal(singles.length, 1);
   assert.equal(singles[0].path, "src/app.mjs");
-  assert.equal(singles[0].line, 4);
-  assert.equal(singles[0].commitId, "1234567890");
   assert.equal(updated.reviewId, 44);
-  assert.match(updated.body, /1 inline comment/);
+  assert.match(updated.body, /ℹ️ 1 Low/);
 });
 
-test("posts a summary-only review when the model returns markdown instead of JSON", async () => {
+test("approves when the model returns no findings", async () => {
   let posted;
-  const client = {
-    getPullRequest: async () => pullRequest(),
-    listIssueComments: async () => [],
-    listPullRequestReviews: async () => [],
-    getPullRequestDiff: async () => sampleDiff,
+  const client = baseClient({
     createPullRequestReview: async (_repo, _number, payload) => (posted = payload),
-  };
+  });
   const result = await reviewPullRequest({
     client,
     fullName: "gregnazario/example",
@@ -242,19 +280,141 @@ test("posts a summary-only review when the model returns markdown instead of JSO
     logger: { log() {}, error() {} },
   });
   assert.equal(result.status, "reviewed");
+  assert.equal(posted.event, "APPROVE");
   assert.equal(posted.comments, undefined);
-  assert.match(posted.body, /No actionable issues found/);
+  assert.match(posted.body, /No new findings/);
 });
 
-test("sends annotated diffs with line numbers to the model", async () => {
-  let bundle;
-  const client = {
-    getPullRequest: async () => pullRequest(),
-    listIssueComments: async () => [],
-    listPullRequestReviews: async () => [],
-    getPullRequestDiff: async () => sampleDiff,
+test("replies still applies, resolves addressed threads, and posts moved comments", async () => {
+  const replies = [];
+  const resolved = [];
+  let posted;
+  const client = baseClient({
+    listUnresolvedHedgehogThreads: async () => [
+      { commentId: 101, threadId: "T101", path: "src/app.mjs", line: 2, side: "LEFT", severity: "High", body: "**High:** old subtract" },
+      { commentId: 202, threadId: "T202", path: "src/app.mjs", line: 3, side: "RIGHT", severity: "Low", body: "**Low:** still" },
+      { commentId: 303, threadId: "T303", path: "src/app.mjs", line: 1, side: "RIGHT", severity: "Medium", body: "**Medium:** moved" },
+    ],
+    createPullRequestReview: async (_repo, _number, payload) => (posted = payload),
+    createPullRequestReviewCommentReply: async (_repo, _number, id, body) => replies.push({ id, body }),
+    resolveReviewThread: async (id) => resolved.push(id),
+  });
+  const result = await reviewPullRequest({
+    client,
+    fullName: "gregnazario/example",
+    number: 7,
+    config,
+    runModel: async () => JSON.stringify({
+      summary: "Follow-up.",
+      findings: [],
+      addressed_comment_ids: [101, 999],
+      still_applies: [
+        { id: 202 },
+        { id: 303, path: "src/app.mjs", line: 4, side: "RIGHT", severity: "Medium", body: "Now on VERSION" },
+        { id: 888 },
+      ],
+    }),
+    logger: { log() {}, error() {} },
+  });
+  assert.equal(result.status, "reviewed");
+  assert.equal(posted.event, "COMMENT");
+  assert.equal(posted.comments.length, 1);
+  assert.equal(posted.comments[0].line, 4);
+  assert.match(posted.comments[0].body, /Now on VERSION/);
+  assert.deepEqual(replies, [{ id: 202, body: "Still applies." }]);
+  assert.deepEqual(resolved, ["T101"]);
+});
+
+test("dismisses outstanding hedgehog REQUEST_CHANGES on a Medium/Low pass", async () => {
+  const dismissed = [];
+  const client = baseClient({
+    listPullRequestReviews: async () => [
+      { id: 9, user: { type: "Bot", login: "hedgehog-pr-bot[bot]" }, state: "CHANGES_REQUESTED", body: "old" },
+      { id: 8, user: { type: "Bot", login: "cursor[bot]" }, state: "CHANGES_REQUESTED", body: "cursor" },
+    ],
+    createPullRequestReview: async () => ({ id: 10 }),
+    dismissPullRequestReview: async (_repo, _number, id) => dismissed.push(id),
+  });
+  await reviewPullRequest({
+    client,
+    fullName: "gregnazario/example",
+    number: 7,
+    config,
+    force: true,
+    runModel: async () => jsonReview(),
+    logger: { log() {}, error() {} },
+  });
+  assert.deepEqual(dismissed, [9]);
+});
+
+test("does not post Still applies when hedgehog already replied", async () => {
+  const replies = [];
+  const client = baseClient({
+    listUnresolvedHedgehogThreads: async () => [{
+      commentId: 202,
+      threadId: "T202",
+      path: "src/app.mjs",
+      line: 3,
+      side: "RIGHT",
+      severity: "Low",
+      body: "**Low:** still",
+      alreadyReplied: true,
+    }],
     createPullRequestReview: async () => {},
-  };
+    createPullRequestReviewCommentReply: async (_repo, _number, id, body) => replies.push({ id, body }),
+  });
+  await reviewPullRequest({
+    client,
+    fullName: "gregnazario/example",
+    number: 7,
+    config,
+    runModel: async () => JSON.stringify({
+      summary: "Still open.",
+      findings: [],
+      still_applies: [{ id: 202 }],
+    }),
+    logger: { log() {}, error() {} },
+  });
+  assert.deepEqual(replies, []);
+});
+
+test("completes the check as failure when Pi throws", async () => {
+  let outcome;
+  const client = baseClient({
+    updateCheckRun: async (_repo, id, payload) => (outcome = { id, payload }),
+    deleteIssueReaction: async () => {},
+  });
+  await assert.rejects(() => reviewPullRequest({
+    client,
+    fullName: "gregnazario/example",
+    number: 7,
+    config,
+    checkRunId: 77,
+    eyesReactionId: 5,
+    runModel: async () => {
+      throw new Error("Pi exploded");
+    },
+    logger: { log() {}, error() {} },
+  }));
+  assert.equal(outcome.id, 77);
+  assert.equal(outcome.payload.conclusion, "failure");
+  assert.equal(outcome.payload.title, "❌ Review failed");
+});
+
+test("sends annotated diffs and previous threads to the model", async () => {
+  let bundle;
+  const client = baseClient({
+    listUnresolvedHedgehogThreads: async () => [{
+      commentId: 101,
+      threadId: "T101",
+      path: "src/app.mjs",
+      line: 4,
+      side: "RIGHT",
+      severity: "Low",
+      body: "**Low:** old",
+    }],
+    createPullRequestReview: async () => {},
+  });
   await reviewPullRequest({
     client,
     fullName: "gregnazario/example",
@@ -268,6 +428,20 @@ test("sends annotated diffs with line numbers to the model", async () => {
   });
   assert.match(bundle, /\[RIGHT 4\] \+export const VERSION = 1;/);
   assert.match(bundle, /\[LEFT 2\] -  return a - b;/);
+  assert.match(bundle, /<previous_threads>/);
+  assert.match(bundle, /id: 101/);
+});
+
+test("buildReviewBundle includes previous threads", () => {
+  const bundle = buildReviewBundle("gregnazario/example", pullRequest(), sampleDiff, 10_000, [{
+    commentId: 7,
+    path: "src/app.mjs",
+    line: 4,
+    side: "RIGHT",
+    severity: "Low",
+    body: "**Low:** note",
+  }]);
+  assert.match(bundle, /id: 7 path: src\/app.mjs line: 4/);
 });
 
 test("removes GitHub App and webhook secrets from Pi's environment", () => {

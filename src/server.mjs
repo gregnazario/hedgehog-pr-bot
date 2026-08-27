@@ -4,21 +4,52 @@ import { createServer } from "node:http";
 import { pathToFileURL } from "node:url";
 import { loadPrivateKey, loadReviewConfig, positiveInteger } from "./config.mjs";
 import { GitHubClient, InstallationTokenProvider } from "./github.mjs";
+import { cancelQueuedProgress, prepareAcceptedJob } from "./progress.mjs";
 import { SerialDedupeQueue } from "./queue.mjs";
 import { reviewPullRequest } from "./reviewer.mjs";
 import { reviewJobFromWebhook, verifyWebhookSignature } from "./webhook.mjs";
 
 const maxBodyBytes = 2 * 1024 * 1024;
 
-export function createAppServer({ webhookSecret, tokenProvider, reviewConfig, logger = console }) {
+export function createAppServer({
+  webhookSecret,
+  tokenProvider,
+  reviewConfig,
+  logger = console,
+  createClient = (token) => new GitHubClient(token),
+}) {
   if (!webhookSecret) throw new Error("GITHUB_WEBHOOK_SECRET is required");
 
   const queue = new SerialDedupeQueue(async (job) => {
     const token = await tokenProvider.get(job.installationId);
-    const client = new GitHubClient(token);
-    await reviewPullRequest({ client, fullName: job.fullName, number: job.number, config: reviewConfig, logger });
+    const client = createClient(token);
+    const prepared = await prepareAcceptedJob(client, job, {
+      author: reviewConfig.author,
+      fingerprint: reviewConfig.fingerprint,
+      force: Boolean(job.force),
+    }, logger);
+    if (!prepared) return;
+    await reviewPullRequest({
+      client,
+      fullName: prepared.fullName,
+      number: prepared.number,
+      config: reviewConfig,
+      force: Boolean(job.force),
+      checkRunId: prepared.checkRunId,
+      eyesReactionId: prepared.eyesReactionId,
+      logger,
+    });
   }, {
     onError: (error, job) => logger.error(`Review failed for ${job.key}: ${error.message}`),
+    onReplace: (previous) => {
+      tokenProvider.get(previous.installationId).then((token) => (
+        cancelQueuedProgress(createClient(token), {
+          fullName: previous.fullName,
+          checkRunId: previous.checkRunId,
+          logger,
+        })
+      )).catch((error) => logger.error(`Could not cancel superseded check for ${previous.key}: ${error.message}`));
+    },
   });
 
   const server = createServer(async (request, response) => {

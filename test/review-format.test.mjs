@@ -28,18 +28,26 @@ test("parses a JSON review object", () => {
       side: "RIGHT",
       body: "This used to subtract.",
     }],
+    addressed_comment_ids: [101],
+    still_applies: [{ id: 202 }, { id: 303, path: "src/app.mjs", line: 4, side: "RIGHT", body: "moved" }],
   }));
   assert.equal(parsed.summary, "One arithmetic bug.");
   assert.equal(parsed.findings.length, 1);
   assert.equal(parsed.findings[0].path, "src/app.mjs");
   assert.equal(parsed.findings[0].line, 2);
   assert.equal(parsed.findings[0].side, "RIGHT");
+  assert.deepEqual(parsed.addressedCommentIds, [101]);
+  assert.equal(parsed.stillApplies.length, 2);
+  assert.deepEqual(parsed.stillApplies[0], { id: 202 });
+  assert.equal(parsed.stillApplies[1].line, 4);
 });
 
 test("parses JSON wrapped in a markdown fence and extra prose", () => {
   const parsed = parseReviewOutput(`Here is the review:\n\`\`\`json\n{"summary":"Looks good.","findings":[]}\n\`\`\`\n`);
   assert.equal(parsed.summary, "Looks good.");
   assert.deepEqual(parsed.findings, []);
+  assert.deepEqual(parsed.addressedCommentIds, []);
+  assert.deepEqual(parsed.stillApplies, []);
 });
 
 test("treats non-JSON output as a summary with no findings", () => {
@@ -130,19 +138,34 @@ test("keeps the 100-comment GitHub limit and prefers higher severity", () => {
   assert.equal(comments.filter((comment) => comment.body.startsWith("**Critical:**")).length, 5);
 });
 
-test("builds a review body with the marker, summary, and footer", () => {
+test("builds a review body with the marker, tally, and footer", () => {
   const body = buildReviewBody({
     marker: "<!-- greg-pr-bot-review head:123 config:abc -->",
     summary: "Looks good.",
-    commentCount: 2,
+    severities: ["High", "Low", "Low"],
     unmapped: [],
     headSha: "1234567dead",
     modelLabels: "zai/glm-5.3:high",
   });
   assert.match(body, /^<!-- greg-pr-bot-review head:123 config:abc -->/);
   assert.match(body, /Looks good/);
-  assert.match(body, /2 inline comments/);
+  assert.match(body, /⚠️ 1 High · ℹ️ 2 Low/);
+  assert.doesNotMatch(body, /inline comments were left/);
   assert.match(body, /Reviewed 1234567/);
+});
+
+test("clean review body says no new findings and has no tally", () => {
+  const body = buildReviewBody({
+    marker: "<!-- greg-pr-bot-review head:123 config:abc -->",
+    summary: "Checked the diff.",
+    clean: true,
+    unmapped: [],
+    headSha: "1234567dead",
+    modelLabels: "zai/glm-5.3:high",
+  });
+  assert.match(body, /No new findings/);
+  assert.match(body, /Checked the diff/);
+  assert.doesNotMatch(body, /⚠️|ℹ️/);
 });
 
 test("includes unmapped notes in the review summary", () => {
