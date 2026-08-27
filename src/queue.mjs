@@ -1,7 +1,8 @@
 export class SerialDedupeQueue {
-  constructor(handler, { onError = (error) => console.error(error) } = {}) {
+  constructor(handler, { onError = (error) => console.error(error), onReplace } = {}) {
     this.handler = handler;
     this.onError = onError;
+    this.onReplace = onReplace;
     this.pending = new Map();
     this.order = [];
     this.running = false;
@@ -9,8 +10,12 @@ export class SerialDedupeQueue {
   }
 
   enqueue(job) {
+    const previous = this.pending.get(job.key);
     if (!this.pending.has(job.key)) this.order.push(job.key);
     this.pending.set(job.key, job);
+    if (previous && this.onReplace) {
+      queueMicrotask(() => this.onReplace(previous, job));
+    }
     if (!this.running) queueMicrotask(() => this.drain());
   }
 

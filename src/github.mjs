@@ -1,4 +1,5 @@
 import { sign } from "node:crypto";
+import { isHedgehogLogin, parseSeverityPrefix } from "./signals.mjs";
 
 const apiVersion = "2022-11-28";
 
@@ -166,6 +167,108 @@ export class GitHubClient {
       method: "DELETE",
     });
   }
+
+  listIssueLabels(fullName, number) {
+    return this.paginatedList(`/repos/${repoPath(fullName)}/issues/${number}/labels`);
+  }
+
+  listIssueReactions(fullName, number) {
+    return this.paginatedList(`/repos/${repoPath(fullName)}/issues/${number}/reactions`);
+  }
+
+  createIssueReaction(fullName, number, content) {
+    return this.request(`/repos/${repoPath(fullName)}/issues/${number}/reactions`, {
+      method: "POST",
+      body: { content },
+    });
+  }
+
+  deleteIssueReaction(fullName, number, reactionId) {
+    return this.request(`/repos/${repoPath(fullName)}/issues/${number}/reactions/${reactionId}`, {
+      method: "DELETE",
+    });
+  }
+
+  createCheckRun(fullName, { headSha, name, status, title, summary }) {
+    return this.request(`/repos/${repoPath(fullName)}/check-runs`, {
+      method: "POST",
+      body: {
+        name,
+        head_sha: headSha,
+        status,
+        output: { title, summary },
+      },
+    });
+  }
+
+  updateCheckRun(fullName, checkRunId, { status, conclusion, title, summary }) {
+    return this.request(`/repos/${repoPath(fullName)}/check-runs/${checkRunId}`, {
+      method: "PATCH",
+      body: {
+        ...(status ? { status } : {}),
+        ...(conclusion ? { conclusion } : {}),
+        ...(title === undefined && summary === undefined ? {} : { output: { title, summary } }),
+      },
+    });
+  }
+
+  dismissPullRequestReview(fullName, number, reviewId, message) {
+    return this.request(`/repos/${repoPath(fullName)}/pulls/${number}/reviews/${reviewId}/dismissals`, {
+      method: "PUT",
+      body: { message, event: "DISMISS" },
+    });
+  }
+
+  createPullRequestReviewCommentReply(fullName, number, commentId, body) {
+    return this.request(`/repos/${repoPath(fullName)}/pulls/${number}/comments/${commentId}/replies`, {
+      method: "POST",
+      body: { body },
+    });
+  }
+
+  async graphql(query, variables = {}) {
+    const payload = await this.request("/graphql", {
+      method: "POST",
+      body: { query, variables },
+    });
+    if (payload?.errors?.length) {
+      throw new Error(payload.errors.map((error) => error.message).join("; "));
+    }
+    return payload.data;
+  }
+
+  async listUnresolvedHedgehogThreads(fullName, number) {
+    const [owner, name] = fullName.split("/");
+    const threads = [];
+    let cursor = null;
+    while (threads.length < 100) {
+      const data = await this.graphql(reviewThreadsQuery, {
+        owner,
+        name,
+        number,
+        cursor,
+      });
+      const connection = data?.repository?.pullRequest?.reviewThreads;
+      for (const node of connection?.nodes ?? []) {
+        if (node.isResolved) continue;
+        const comment = node.comments?.nodes?.[0];
+        if (!comment || !isHedgehogLogin(comment.author?.login)) continue;
+        threads.push({
+          commentId: comment.databaseId,
+          threadId: node.id,
+          path: comment.path,
+          line: comment.line ?? comment.originalLine,
+          side: comment.side === "LEFT" ? "LEFT" : "RIGHT",
+          severity: parseSeverityPrefix(comment.body),
+          body: comment.body,
+        });
+        if (threads.length >= 100) break;
+      }
+      if (!connection?.pageInfo?.hasNextPage || threads.length >= 100) break;
+      cursor = connection.pageInfo.endCursor;
+    }
+    return threads;
+  }
 }
 
 function githubHeaders(token) {
@@ -191,3 +294,30 @@ async function githubError(response, prefix) {
   const detail = (await response.text()).slice(0, 2_000).trim();
   return new Error(`${prefix}: GitHub returned ${response.status}${detail ? `: ${detail}` : ""}`);
 }
+
+const reviewThreadsQuery = `
+query HedgehogReviewThreads($owner: String!, $name: String!, $number: Int!, $cursor: String) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      reviewThreads(first: 50, after: $cursor) {
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          id
+          isResolved
+          comments(first: 1) {
+            nodes {
+              databaseId
+              body
+              path
+              line
+              originalLine
+              side
+              author { login }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+`;
