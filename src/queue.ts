@@ -1,10 +1,10 @@
 export interface QueueOptions<Job> {
-  onError?: (error: Error, job: Job) => void;
+  onError?: (error: unknown, job: Job) => void;
 }
 
 export class SerialDedupeQueue<Job extends { key: string }> {
   private readonly handler: (job: Job) => Promise<unknown>;
-  private readonly onError: (error: Error, job: Job) => void;
+  private readonly onError: (error: unknown, job: Job) => void;
   private readonly pending = new Map<string, Job>();
   private readonly order: string[] = [];
   private readonly idleWaiters: Array<() => void> = [];

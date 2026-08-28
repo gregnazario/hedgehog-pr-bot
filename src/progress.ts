@@ -1,4 +1,5 @@
 import { reviewMarker } from "./config.ts";
+import { errorMessage } from "./errors.ts";
 import {
   CHECK_NAME,
   DEFAULT_BOT_LOGIN,
@@ -49,7 +50,7 @@ export async function startProgress(
     });
     checkRunId = check?.id;
   } catch (error) {
-    logger.error?.(`Could not create Pi review check: ${error.message}`);
+    logger.error?.(`Could not create Pi review check: ${errorMessage(error)}`);
   }
   return { eyesReactionId, checkRunId };
 }
@@ -76,7 +77,7 @@ export async function finishProgress(
     try {
       await client.deleteIssueReaction(fullName, number, eyesReactionId);
     } catch (error) {
-      logger.error?.(`Could not remove 👀 reaction: ${error.message}`);
+      logger.error?.(`Could not remove 👀 reaction: ${errorMessage(error)}`);
     }
   }
   if (checkRunId && outcome && typeof client.updateCheckRun === "function") {
@@ -88,7 +89,7 @@ export async function finishProgress(
         summary: outcome.summary,
       });
     } catch (error) {
-      logger.error?.(`Could not complete Pi review check: ${error.message}`);
+      logger.error?.(`Could not complete Pi review check: ${errorMessage(error)}`);
     }
   }
 }
@@ -113,7 +114,7 @@ async function ensureEyes(
     const created = await client.createIssueReaction(fullName, number, "eyes");
     return created?.id;
   } catch (error) {
-    logger.error?.(`Could not add 👀 reaction: ${error.message}`);
+    logger.error?.(`Could not add 👀 reaction: ${errorMessage(error)}`);
     return undefined;
   }
 }

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { loadReviewConfig, positiveInteger } from "../src/config.ts";
+import { errorMessage } from "../src/errors.ts";
 import { GitHubClient } from "../src/github.ts";
 import { prepareAcceptedJob } from "../src/progress.ts";
 import { reviewPullRequest } from "../src/reviewer.ts";
@@ -22,7 +23,7 @@ for (const repository of repositories.sort((a, b) => a.full_name.localeCompare(b
     pullRequests = await client.listOpenPullRequests(repository.full_name);
   } catch (error) {
     failed += 1;
-    console.error(`Could not list PRs for ${repository.full_name}: ${error.message}`);
+    console.error(`Could not list PRs for ${repository.full_name}: ${errorMessage(error)}`);
     continue;
   }
 
@@ -57,7 +58,7 @@ for (const repository of repositories.sort((a, b) => a.full_name.localeCompare(b
     } catch (error) {
       failed += 1;
       console.error(
-        `Review failed for ${repository.full_name}#${pullRequest.number}: ${error.message}`,
+        `Review failed for ${repository.full_name}#${pullRequest.number}: ${errorMessage(error)}`,
       );
     }
   }

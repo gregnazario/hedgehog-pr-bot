@@ -33,8 +33,16 @@ export function isReviewCommand(body: unknown): boolean {
 
 export const DEFAULT_BOT_LOGIN = "hedgehog-pr-bot";
 
+/** GitHub shows bot accounts with a "[bot]" suffix; accept it on either side,
+ * case-insensitively, so a value copied straight from the UI just works. */
+export function normalizeBotLogin(login: unknown): string {
+  return String(login ?? "")
+    .replace(/\[bot\]$/i, "")
+    .toLowerCase();
+}
+
 export function isHedgehogLogin(login: unknown, botLogin = DEFAULT_BOT_LOGIN): boolean {
-  return String(login ?? "").replace(/\[bot\]$/i, "") === botLogin;
+  return normalizeBotLogin(login) === normalizeBotLogin(botLogin);
 }
 
 export function reviewHasCurrentMarker(

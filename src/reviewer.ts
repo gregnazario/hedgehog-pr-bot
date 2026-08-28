@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { reviewMarker } from "./config.ts";
 import { annotateDiff, indexDiffLocations } from "./diff.ts";
+import { errorMessage } from "./errors.ts";
 import { finishProgress } from "./progress.ts";
 import { buildReviewBody, parseReviewOutput, toReviewComments } from "./review-format.ts";
 import {
@@ -76,7 +77,7 @@ export async function reviewPullRequest({
       number,
       checkRunId,
       eyesReactionId,
-      outcome: checkOutcome({ failed: true, errorMessage: error.message }),
+      outcome: checkOutcome({ failed: true, errorMessage: errorMessage(error) }),
       logger,
     });
     throw error;
@@ -355,7 +356,7 @@ async function loadThreads(
   try {
     return await client.listUnresolvedHedgehogThreads(fullName, number);
   } catch (error) {
-    logger.error?.(`Could not list review threads: ${error.message}`);
+    logger.error?.(`Could not list review threads: ${errorMessage(error)}`);
     return [];
   }
 }
@@ -397,7 +398,7 @@ async function followUpThreads(
           STILL_APPLIES_REPLY,
         );
       } catch (error) {
-        logger.error?.(`Could not reply to comment ${thread.commentId}: ${error.message}`);
+        logger.error?.(`Could not reply to comment ${thread.commentId}: ${errorMessage(error)}`);
       }
     }
   }
@@ -406,7 +407,7 @@ async function followUpThreads(
       try {
         await client.resolveReviewThread(thread.threadId);
       } catch (error) {
-        logger.error?.(`Could not resolve thread ${thread.threadId}: ${error.message}`);
+        logger.error?.(`Could not resolve thread ${thread.threadId}: ${errorMessage(error)}`);
       }
     }
   }
@@ -433,11 +434,11 @@ async function dismissBlockingReviews(
           "No remaining Critical or High findings.",
         );
       } catch (error) {
-        logger.error?.(`Could not dismiss review ${review.id}: ${error.message}`);
+        logger.error?.(`Could not dismiss review ${review.id}: ${errorMessage(error)}`);
       }
     }
   } catch (error) {
-    logger.error?.(`Could not list reviews to dismiss: ${error.message}`);
+    logger.error?.(`Could not list reviews to dismiss: ${errorMessage(error)}`);
   }
 }
 
@@ -471,7 +472,7 @@ async function submitPullRequestReview(
     return;
   } catch (error) {
     if (!comments.length) throw error;
-    logger.error?.(`Inline comments failed (${error.message}); posting summary-only review`);
+    logger.error?.(`Inline comments failed (${errorMessage(error)}); posting summary-only review`);
   }
 
   const review = await client.createPullRequestReview(fullName, number, {
@@ -487,7 +488,7 @@ async function submitPullRequestReview(
     } catch (error) {
       failed.push(comment);
       logger.error?.(
-        `Could not attach comment on ${comment.path}:${comment.line}: ${error.message}`,
+        `Could not attach comment on ${comment.path}:${comment.line}: ${errorMessage(error)}`,
       );
     }
   }

@@ -3,6 +3,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { pathToFileURL } from "node:url";
 import { loadPrivateKey, loadReviewConfig, positiveInteger } from "./config.ts";
+import { errorMessage } from "./errors.ts";
 import { GitHubClient, InstallationTokenProvider } from "./github.ts";
 import { prepareAcceptedJob } from "./progress.ts";
 import { SerialDedupeQueue } from "./queue.ts";
@@ -64,7 +65,7 @@ export function createAppServer({
       });
     },
     {
-      onError: (error, job) => logger.error(`Review failed for ${job.key}: ${error.message}`),
+      onError: (error, job) => logger.error(`Review failed for ${job.key}: ${errorMessage(error)}`),
     },
   );
 
@@ -98,8 +99,9 @@ export function createAppServer({
       logger.log(`Queued ${job.key} at ${job.headSha?.slice(0, 7) || "unknown"}`);
       return json(response, 202, { accepted: true });
     } catch (error) {
-      if (error.code === "BODY_TOO_LARGE") return json(response, 413, { error: "body_too_large" });
-      logger.error(`Webhook request failed: ${error.message}`);
+      if (error instanceof BodyTooLargeError)
+        return json(response, 413, { error: "body_too_large" });
+      logger.error(`Webhook request failed: ${errorMessage(error)}`);
       return json(response, 500, { error: "internal_error" });
     }
   });
@@ -174,7 +176,7 @@ function json(response: ServerResponse, status: number, body: unknown): void {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   startFromEnvironment().catch((error) => {
-    console.error(error.message);
+    console.error(errorMessage(error));
     process.exitCode = 1;
   });
 }

@@ -41,6 +41,8 @@ test("hedgehog login matches the GitHub App bot account", () => {
   assert.equal(isHedgehogLogin("cursor[bot]"), false);
   assert.equal(isHedgehogLogin("gregnazario"), false);
   assert.equal(isHedgehogLogin("my-reviewer[bot]", "my-reviewer"), true);
+  assert.equal(isHedgehogLogin("My-Reviewer", "my-reviewer[BOT]"), true);
+  assert.equal(isHedgehogLogin("my-reviewer[bot]", "my-reviewer[bot]"), true);
   assert.equal(isHedgehogLogin("hedgehog-pr-bot[bot]", "my-reviewer"), false);
 });
 

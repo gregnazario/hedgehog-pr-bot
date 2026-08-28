@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { DEFAULT_BOT_LOGIN } from "./signals.ts";
+import { DEFAULT_BOT_LOGIN, normalizeBotLogin } from "./signals.ts";
 import type { EnvSource, ModelSpec, ReviewConfig } from "./types.ts";
 
 export const markerPrefix = "<!-- greg-pr-bot-review ";
@@ -45,7 +45,7 @@ export function loadReviewConfig(env: EnvSource = process.env): ReviewConfig {
   const models = parseModelSpecs(env.PI_MODELS || "zai/glm-5.3:high");
   return {
     author: (env.PR_AUTHOR || "gregnazario").toLowerCase(),
-    botLogin: (env.BOT_LOGIN || DEFAULT_BOT_LOGIN).toLowerCase(),
+    botLogin: normalizeBotLogin(env.BOT_LOGIN || DEFAULT_BOT_LOGIN),
     maxDiffChars: positiveInteger(env.MAX_DIFF_CHARS, 4_000_000),
     models,
     fingerprint: createHash("sha256")

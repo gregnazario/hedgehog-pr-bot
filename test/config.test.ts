@@ -21,5 +21,5 @@ test("review marker encodes head SHA and config fingerprint", () => {
 
 test("review config reads the bot login with a hedgehog default", () => {
   assert.equal(loadReviewConfig({}).botLogin, "hedgehog-pr-bot");
-  assert.equal(loadReviewConfig({ BOT_LOGIN: "MyReviewer[Bot]" }).botLogin, "myreviewer[bot]");
+  assert.equal(loadReviewConfig({ BOT_LOGIN: "MyReviewer[Bot]" }).botLogin, "myreviewer");
 });
