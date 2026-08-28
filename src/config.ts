@@ -1,19 +1,24 @@
 import { createHash } from "node:crypto";
+import { DEFAULT_BOT_LOGIN, normalizeBotLogin } from "./signals.ts";
+import type { EnvSource, ModelSpec, ReviewConfig } from "./types.ts";
 
 export const markerPrefix = "<!-- greg-pr-bot-review ";
 
-export function reviewMarker(headSha, fingerprint) {
+export function reviewMarker(headSha: string, fingerprint: string): string {
   return `${markerPrefix}head:${headSha} config:${fingerprint} -->`;
 }
 
-export function positiveInteger(value, fallback) {
+export function positiveInteger(value: string | undefined, fallback: number): number {
   const parsed = Number.parseInt(value ?? "", 10);
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-export function parseModelSpecs(value) {
+export function parseModelSpecs(value: string): ModelSpec[] {
   const thinkingLevels = new Set(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
-  const entries = value.split(",").map((entry) => entry.trim()).filter(Boolean);
+  const entries = value
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
   if (entries.length === 0) throw new Error("PI_MODELS must contain at least one model");
 
   return entries.map((entry) => {
@@ -36,10 +41,11 @@ export function parseModelSpecs(value) {
   });
 }
 
-export function loadReviewConfig(env = process.env) {
+export function loadReviewConfig(env: EnvSource = process.env): ReviewConfig {
   const models = parseModelSpecs(env.PI_MODELS || "zai/glm-5.3:high");
   return {
     author: (env.PR_AUTHOR || "gregnazario").toLowerCase(),
+    botLogin: normalizeBotLogin(env.BOT_LOGIN || DEFAULT_BOT_LOGIN),
     maxDiffChars: positiveInteger(env.MAX_DIFF_CHARS, 4_000_000),
     models,
     fingerprint: createHash("sha256")
@@ -49,7 +55,7 @@ export function loadReviewConfig(env = process.env) {
   };
 }
 
-export function loadPrivateKey(env = process.env) {
+export function loadPrivateKey(env: EnvSource): string {
   if (env.APP_PRIVATE_KEY_BASE64) {
     return Buffer.from(env.APP_PRIVATE_KEY_BASE64, "base64").toString("utf8");
   }

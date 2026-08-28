@@ -1,6 +1,31 @@
+import type { Side } from "./types.ts";
+
 const MAX_SNAP_DISTANCE = 5;
 
-export function parseDiffPath(raw) {
+export interface DiffLocation {
+  path: string;
+  side: Side;
+  line: number;
+  hunkId: number;
+}
+
+export interface DiffLocations {
+  readonly entries: readonly DiffLocation[];
+  readonly aliases: ReadonlyMap<string, string>;
+  has(path: string, side: Side, line: number): boolean;
+  get(path: string, side: Side, line: number): DiffLocation | undefined;
+  nearest(path: string, side: Side, line: number): DiffLocation | undefined;
+  resolvePath(input: unknown): string;
+}
+
+export interface CommentAnchorInput {
+  path?: unknown;
+  line?: unknown;
+  side?: unknown;
+  start_line?: unknown;
+}
+
+export function parseDiffPath(raw: unknown): string {
   let value = String(raw ?? "").trim();
   if (value.startsWith('"')) {
     const end = value.indexOf('"', 1);
@@ -16,26 +41,30 @@ export function parseDiffPath(raw) {
   return value;
 }
 
-export function normalizePath(input) {
-  let path = String(input ?? "").trim().replaceAll("\\", "/");
+export function normalizePath(input: unknown): string {
+  let path = String(input ?? "")
+    .trim()
+    .replaceAll("\\", "/");
   if (path.startsWith("./")) path = path.slice(2);
   if (path.startsWith("a/") || path.startsWith("b/")) path = path.slice(2);
   while (path.startsWith("/")) path = path.slice(1);
   return path;
 }
 
-export function normalizeSide(value) {
-  const text = String(value ?? "").trim().toLowerCase();
+export function normalizeSide(value: unknown): Side | null {
+  const text = String(value ?? "")
+    .trim()
+    .toLowerCase();
   if (["left", "old", "-", "deletion", "deleted"].includes(text)) return "LEFT";
   if (["right", "new", "+", "addition", "added"].includes(text)) return "RIGHT";
   return null;
 }
 
-export function indexDiffLocations(diff) {
-  const entries = [];
-  const aliases = new Map();
-  let oldPath = null;
-  let newPath = null;
+export function indexDiffLocations(diff: unknown): DiffLocations {
+  const entries: DiffLocation[] = [];
+  const aliases = new Map<string, string>();
+  let oldPath: string | null = null;
+  let newPath: string | null = null;
   let oldLine = 0;
   let newLine = 0;
   let inHunk = false;
@@ -43,7 +72,7 @@ export function indexDiffLocations(diff) {
 
   const commentPath = () => (newPath && newPath !== "/dev/null" ? newPath : oldPath);
 
-  const add = (side, line) => {
+  const add = (side: Side, line: number) => {
     const path = commentPath();
     if (!path || path === "/dev/null" || line < 1) return;
     entries.push({ path, side, line, hunkId });
@@ -71,7 +100,13 @@ export function indexDiffLocations(diff) {
     }
     if (rawLine.startsWith("+++ ")) {
       newPath = parseDiffPath(rawLine.slice(4));
-      if (oldPath && newPath && oldPath !== "/dev/null" && newPath !== "/dev/null" && oldPath !== newPath) {
+      if (
+        oldPath &&
+        newPath &&
+        oldPath !== "/dev/null" &&
+        newPath !== "/dev/null" &&
+        oldPath !== newPath
+      ) {
         aliases.set(oldPath, newPath);
       }
       continue;
@@ -104,8 +139,15 @@ export function indexDiffLocations(diff) {
     }
   }
 
-  const byKey = new Map();
-  for (const entry of entries) byKey.set(locationKey(entry.path, entry.side, entry.line), entry);
+  const byKey = new Map<string, DiffLocation>();
+  const bySide = new Map<string, DiffLocation[]>();
+  for (const entry of entries) {
+    byKey.set(locationKey(entry.path, entry.side, entry.line), entry);
+    const bucketKey = sideKey(entry.path, entry.side);
+    const bucket = bySide.get(bucketKey);
+    if (bucket) bucket.push(entry);
+    else bySide.set(bucketKey, [entry]);
+  }
   const paths = new Set(entries.map((entry) => entry.path));
 
   return {
@@ -117,14 +159,17 @@ export function indexDiffLocations(diff) {
     get(path, side, line) {
       return byKey.get(locationKey(path, side, line));
     },
+    nearest(path, side, line) {
+      return nearestInBucket(bySide.get(sideKey(path, side)) ?? [], line);
+    },
     resolvePath(input) {
       return resolveFilePath(input, paths, aliases);
     },
   };
 }
 
-export function annotateDiff(diff) {
-  const output = [];
+export function annotateDiff(diff: unknown): string {
+  const output: string[] = [];
   let oldLine = 0;
   let newLine = 0;
   let inHunk = false;
@@ -138,7 +183,11 @@ export function annotateDiff(diff) {
       output.push(rawLine);
       continue;
     }
-    if (rawLine.startsWith("diff --git ") || rawLine.startsWith("--- ") || rawLine.startsWith("+++ ")) {
+    if (
+      rawLine.startsWith("diff --git ") ||
+      rawLine.startsWith("--- ") ||
+      rawLine.startsWith("+++ ")
+    ) {
       inHunk = false;
       output.push(rawLine);
       continue;
@@ -165,7 +214,16 @@ export function annotateDiff(diff) {
   return output.join("\n");
 }
 
-export function resolveCommentAnchor(locations, finding) {
+export interface CommentAnchor {
+  path: string;
+  line: number;
+  side: Side;
+}
+
+export function resolveCommentAnchor(
+  locations: DiffLocations,
+  finding: CommentAnchorInput,
+): CommentAnchor | null {
   const path = locations.resolvePath(finding.path);
   const line = Number(finding.line);
   if (!path || !Number.isSafeInteger(line) || line <= 0) return null;
@@ -176,7 +234,12 @@ export function resolveCommentAnchor(locations, finding) {
   return { path: match.path, line: match.line, side: match.side };
 }
 
-function pickLocation(locations, path, side, line) {
+function pickLocation(
+  locations: DiffLocations,
+  path: string,
+  side: Side,
+  line: number,
+): DiffLocation | undefined {
   const exact = locations.get(path, side, line);
   if (exact) return exact;
 
@@ -184,51 +247,64 @@ function pickLocation(locations, path, side, line) {
   const exactOther = locations.get(path, other, line);
   if (exactOther) return exactOther;
 
-  const nearestSame = nearestOnSide(locations, path, side, line);
+  const nearestSame = locations.nearest(path, side, line);
   if (nearestSame && Math.abs(nearestSame.line - line) <= MAX_SNAP_DISTANCE) return nearestSame;
-  return null;
+  return undefined;
 }
 
-function nearestOnSide(locations, path, side, line) {
-  let best = null;
-  for (const entry of locations.entries) {
-    if (entry.path !== path || entry.side !== side) continue;
-    if (!best || closer(entry.line, best.line, line)) best = entry;
+// Buckets hold locations for one path and side in ascending line order, so the
+// nearest line is found with a binary search instead of scanning the diff.
+function nearestInBucket(bucket: readonly DiffLocation[], line: number): DiffLocation | undefined {
+  let low = 0;
+  let high = bucket.length - 1;
+  if (high < 0) return undefined;
+  while (low < high) {
+    const mid = (low + high) >> 1;
+    if (bucket[mid].line < line) low = mid + 1;
+    else high = mid;
   }
-  return best;
+  const after = bucket[low];
+  const before = low > 0 ? bucket[low - 1] : undefined;
+  if (!before) return after;
+  if (after.line - line < line - before.line) return after;
+  return before;
 }
 
-function closer(candidate, current, target) {
-  const candidateDistance = Math.abs(candidate - target);
-  const currentDistance = Math.abs(current - target);
-  return candidateDistance < currentDistance || (candidateDistance === currentDistance && candidate < current);
-}
-
-function resolveFilePath(input, paths, aliases) {
+function resolveFilePath(
+  input: unknown,
+  paths: ReadonlySet<string>,
+  aliases: ReadonlyMap<string, string>,
+): string {
   const path = normalizePath(input);
   if (!path) return "";
   if (paths.has(path)) return path;
   const aliased = aliases.get(path);
   if (aliased && paths.has(aliased)) return aliased;
-  const matches = [...paths].filter((candidate) => candidate === path || candidate.endsWith(`/${path}`));
+  const matches = [...paths].filter(
+    (candidate) => candidate === path || candidate.endsWith(`/${path}`),
+  );
   return matches.length === 1 ? matches[0] : path;
 }
 
-function matchHunk(line) {
+function matchHunk(line: string): { oldStart: number; newStart: number } | null {
   const match = line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
   if (!match) return null;
   return { oldStart: Number(match[1]), newStart: Number(match[2]) };
 }
 
-function splitDiff(diff) {
+function splitDiff(diff: unknown): string[] {
   return String(diff ?? "").split("\n");
 }
 
-function locationKey(path, side, line) {
+function locationKey(path: string, side: Side, line: number): string {
   return `${path}\0${side}\0${line}`;
 }
 
-function unescapeGitPath(value) {
+function sideKey(path: string, side: Side): string {
+  return `${path}\0${side}`;
+}
+
+function unescapeGitPath(value: string): string {
   return value
     .replaceAll("\\\\", "\\")
     .replaceAll("\\n", "\n")

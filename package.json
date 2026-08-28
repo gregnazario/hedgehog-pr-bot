@@ -1,14 +1,24 @@
 {
-  "name": "greg-pr-bot",
+  "name": "hedgehog-pr-bot",
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "packageManager": "bun@1.4.0",
   "engines": {
     "node": ">=24"
   },
   "scripts": {
-    "start": "node src/server.mjs",
-    "scan": "node scripts/review-prs.mjs",
-    "test": "node --test"
+    "start": "node src/server.ts",
+    "scan": "node scripts/review-prs.ts",
+    "test": "node --test \"test/*.test.ts\"",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "fix": "biome check --write ."
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.11",
+    "@types/node": "^24",
+    "typescript": "^7.0.2"
   }
 }

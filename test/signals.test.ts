@@ -1,10 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  CHECK_NAME,
-  SKIP_REVIEW_LABEL,
-  STILL_APPLIES_REPLY,
   applyThreadDecisions,
+  CHECK_NAME,
   checkOutcome,
   collectSeverities,
   hasSkipReviewLabel,
@@ -13,9 +11,12 @@ import {
   parseSeverityPrefix,
   reviewEventFromSeverities,
   reviewHasCurrentMarker,
+  SKIP_REVIEW_LABEL,
+  STILL_APPLIES_REPLY,
   sanitizeCheckText,
   tallyLine,
-} from "../src/signals.mjs";
+} from "../src/signals.ts";
+import type { HedgehogThread } from "../src/types.ts";
 
 test("skip-review matches label names case-insensitively", () => {
   assert.equal(SKIP_REVIEW_LABEL, "skip-review");
@@ -39,6 +40,10 @@ test("hedgehog login matches the GitHub App bot account", () => {
   assert.equal(isHedgehogLogin("hedgehog-pr-bot"), true);
   assert.equal(isHedgehogLogin("cursor[bot]"), false);
   assert.equal(isHedgehogLogin("gregnazario"), false);
+  assert.equal(isHedgehogLogin("my-reviewer[bot]", "my-reviewer"), true);
+  assert.equal(isHedgehogLogin("My-Reviewer", "my-reviewer[BOT]"), true);
+  assert.equal(isHedgehogLogin("my-reviewer[bot]", "my-reviewer[bot]"), true);
+  assert.equal(isHedgehogLogin("hedgehog-pr-bot[bot]", "my-reviewer"), false);
 });
 
 test("severity prefix is read from hedgehog comment bodies", () => {
@@ -48,10 +53,34 @@ test("severity prefix is read from hedgehog comment bodies", () => {
 });
 
 test("thread decisions resolve, reply, move, and drop unknown ids", () => {
-  const threads = [
-    { commentId: 101, threadId: "T101", path: "a.mjs", line: 1, side: "RIGHT", severity: "High", body: "**High:** old" },
-    { commentId: 202, threadId: "T202", path: "b.mjs", line: 2, side: "RIGHT", severity: "Low", body: "**Low:** still" },
-    { commentId: 303, threadId: "T303", path: "c.mjs", line: 3, side: "RIGHT", severity: "Medium", body: "**Medium:** moved" },
+  const threads: HedgehogThread[] = [
+    {
+      commentId: 101,
+      threadId: "T101",
+      path: "a.mjs",
+      line: 1,
+      side: "RIGHT",
+      severity: "High",
+      body: "**High:** old",
+    },
+    {
+      commentId: 202,
+      threadId: "T202",
+      path: "b.mjs",
+      line: 2,
+      side: "RIGHT",
+      severity: "Low",
+      body: "**Low:** still",
+    },
+    {
+      commentId: 303,
+      threadId: "T303",
+      path: "c.mjs",
+      line: 3,
+      side: "RIGHT",
+      severity: "Medium",
+      body: "**Medium:** moved",
+    },
   ];
   const result = applyThreadDecisions({
     findings: [
@@ -66,22 +95,32 @@ test("thread decisions resolve, reply, move, and drop unknown ids", () => {
     ],
     threads,
   });
-  assert.deepEqual(result.addressed.map((thread) => thread.commentId), [101]);
-  assert.deepEqual(result.stillReplies.map((thread) => thread.commentId), [202]);
-  assert.deepEqual(result.movedFindings, [{
-    severity: "Medium",
-    path: "c2.mjs",
-    line: 40,
-    side: "RIGHT",
-    body: "now here",
-  }]);
-  assert.deepEqual(result.newFindings, [{
-    severity: "Low",
-    path: "d.mjs",
-    line: 9,
-    side: "RIGHT",
-    body: "new",
-  }]);
+  assert.deepEqual(
+    result.addressed.map((thread) => thread.commentId),
+    [101],
+  );
+  assert.deepEqual(
+    result.stillReplies.map((thread) => thread.commentId),
+    [202],
+  );
+  assert.deepEqual(result.movedFindings, [
+    {
+      severity: "Medium",
+      path: "c2.mjs",
+      line: 40,
+      side: "RIGHT",
+      body: "now here",
+    },
+  ]);
+  assert.deepEqual(result.newFindings, [
+    {
+      severity: "Low",
+      path: "d.mjs",
+      line: 9,
+      side: "RIGHT",
+      body: "new",
+    },
+  ]);
 });
 
 test("same path and line on LEFT vs RIGHT are distinct locations", () => {
@@ -91,50 +130,88 @@ test("same path and line on LEFT vs RIGHT are distinct locations", () => {
       { severity: "Low", path: "a.mjs", line: 1, side: "RIGHT", body: "right" },
     ],
     stillApplies: [{ id: 1 }],
-    threads: [{
-      commentId: 1,
+    threads: [
+      {
+        commentId: 1,
+        threadId: "T1",
+        path: "a.mjs",
+        line: 1,
+        side: "RIGHT",
+        severity: "High",
+        body: "**High:** still",
+      },
+    ],
+  });
+  assert.deepEqual(result.newFindings, [
+    {
+      severity: "Low",
       path: "a.mjs",
       line: 1,
-      side: "RIGHT",
-      severity: "High",
-      body: "**High:** still",
-    }],
-  });
-  assert.deepEqual(result.newFindings, [{
-    severity: "Low",
-    path: "a.mjs",
-    line: 1,
-    side: "LEFT",
-    body: "left",
-  }]);
+      side: "LEFT",
+      body: "left",
+    },
+  ]);
   assert.equal(result.stillReplies.length, 1);
 });
 
 test("collectSeverities counts each finding once and ignores unmapped extras", () => {
   const finding = { severity: "High", path: "a.mjs", line: 1 };
-  assert.deepEqual(collectSeverities({
-    newFindings: [finding],
-    movedFindings: [],
-    stillReplies: [{ severity: "Low" }],
-    unmapped: [finding],
-    overflow: [finding],
-  }), ["High", "Low"]);
+  assert.deepEqual(
+    collectSeverities({
+      newFindings: [finding],
+      movedFindings: [],
+      stillReplies: [{ severity: "Low" }],
+      unmapped: [finding],
+      overflow: [finding],
+    }),
+    ["High", "Low"],
+  );
 });
 
 test("review marker matches hedgehog or generic bot bodies", () => {
   const marker = "<!-- greg-pr-bot-review head:abc config:fp -->";
-  assert.equal(reviewHasCurrentMarker([{
-    user: { type: "Bot" },
-    body: `${marker}\ndone`,
-  }], marker), true);
-  assert.equal(reviewHasCurrentMarker([{
-    user: { login: "hedgehog-pr-bot[bot]" },
-    body: `${marker}\ndone`,
-  }], marker), true);
-  assert.equal(reviewHasCurrentMarker([{
-    user: { type: "User", login: "gregnazario" },
-    body: `${marker}\ndone`,
-  }], marker), false);
+  assert.equal(
+    reviewHasCurrentMarker(
+      [
+        {
+          id: 1,
+          state: "APPROVED",
+          user: { type: "Bot" },
+          body: `${marker}\ndone`,
+        },
+      ],
+      marker,
+    ),
+    true,
+  );
+  assert.equal(
+    reviewHasCurrentMarker(
+      [
+        {
+          id: 2,
+          state: "APPROVED",
+          user: { login: "hedgehog-pr-bot[bot]" },
+          body: `${marker}\ndone`,
+        },
+      ],
+      marker,
+    ),
+    true,
+  );
+  assert.equal(
+    reviewHasCurrentMarker(
+      [
+        {
+          id: 3,
+          state: "APPROVED",
+          user: { type: "User", login: "gregnazario" },
+          body: `${marker}\ndone`,
+        },
+      ],
+      marker,
+    ),
+    false,
+  );
 });
 
 test("review event follows clean / high / medium-low rules", () => {

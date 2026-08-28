@@ -6,7 +6,7 @@ on:
     - cron: "17 * * * *"
 
 concurrency:
-  group: greg-pr-bot
+  group: hedgehog-pr-bot
   cancel-in-progress: false
 
 permissions:
@@ -53,9 +53,10 @@ jobs:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           PI_MODELS: ${{ vars.PI_MODELS || 'zai/glm-5.3:high' }}
           PR_AUTHOR: gregnazario
+          BOT_LOGIN: ${{ vars.BOT_LOGIN || 'hedgehog-pr-bot' }}
           MAX_REVIEWS_PER_RUN: "5"
           PI_CODING_AGENT_DIR: ${{ runner.temp }}/pi-agent
           PI_SKIP_VERSION_CHECK: "1"
           PI_TELEMETRY: "0"
           NO_COLOR: "1"
-        run: node scripts/review-prs.mjs
+        run: node scripts/review-prs.ts

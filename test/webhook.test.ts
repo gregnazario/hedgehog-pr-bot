@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { reviewJobFromWebhook, verifyWebhookSignature } from "../src/webhook.mjs";
+import { reviewJobFromWebhook, verifyWebhookSignature } from "../src/webhook.ts";
 
 test("validates GitHub's documented webhook signature vector", () => {
   const body = Buffer.from("Hello, World!");
@@ -9,7 +9,7 @@ test("validates GitHub's documented webhook signature vector", () => {
   assert.equal(verifyWebhookSignature("wrong", body, signature), false);
 });
 
-function pullRequestPayload(overrides = {}) {
+function pullRequestPayload(overrides: Record<string, any> = {}) {
   return {
     action: "synchronize",
     number: 42,
@@ -36,14 +36,25 @@ test("creates jobs only for reviewable pull request events", () => {
     headSha: "abcdef",
     force: false,
   });
-  assert.equal(reviewJobFromWebhook("pull_request", { ...payload, action: "closed" }, "gregnazario"), null);
-  assert.equal(reviewJobFromWebhook("pull_request", { ...payload, action: "labeled" }, "gregnazario"), null);
+  assert.equal(
+    reviewJobFromWebhook("pull_request", { ...payload, action: "closed" }, "gregnazario"),
+    null,
+  );
+  assert.equal(
+    reviewJobFromWebhook("pull_request", { ...payload, action: "labeled" }, "gregnazario"),
+    null,
+  );
   assert.equal(reviewJobFromWebhook("issues", payload, "gregnazario"), null);
 });
 
 test("does not enqueue skip-review pull requests", () => {
   const payload = pullRequestPayload({
-    pull_request: { draft: false, user: { login: "gregnazario" }, head: { sha: "abcdef" }, labels: [{ name: "skip-review" }] },
+    pull_request: {
+      draft: false,
+      user: { login: "gregnazario" },
+      head: { sha: "abcdef" },
+      labels: [{ name: "skip-review" }],
+    },
   });
   assert.equal(reviewJobFromWebhook("pull_request", payload, "gregnazario"), null);
 });
@@ -84,7 +95,9 @@ test("issue_comment /review ignores missing draft/head fields and still enqueues
       pull_request: { url: "https://api.github.com/repos/gregnazario/example/pulls/42" },
     },
   };
-  assert.equal(reviewJobFromWebhook("issue_comment", payload, "gregnazario").force, true);
+  const job = reviewJobFromWebhook("issue_comment", payload, "gregnazario");
+  assert.ok(job);
+  assert.equal(job.force, true);
 });
 
 test("ignores /review from other users, skip-review, and lookalikes", () => {
@@ -100,16 +113,37 @@ test("ignores /review from other users, skip-review, and lookalikes", () => {
       pull_request: {},
     },
   };
-  assert.equal(reviewJobFromWebhook("issue_comment", {
-    ...base,
-    comment: { body: "/review", user: { login: "someone-else" } },
-  }, "gregnazario"), null);
-  assert.equal(reviewJobFromWebhook("issue_comment", {
-    ...base,
-    comment: { body: "/review-foo", user: { login: "gregnazario" } },
-  }, "gregnazario"), null);
-  assert.equal(reviewJobFromWebhook("issue_comment", {
-    ...base,
-    issue: { ...base.issue, labels: [{ name: "skip-review" }] },
-  }, "gregnazario"), null);
+  assert.equal(
+    reviewJobFromWebhook(
+      "issue_comment",
+      {
+        ...base,
+        comment: { body: "/review", user: { login: "someone-else" } },
+      },
+      "gregnazario",
+    ),
+    null,
+  );
+  assert.equal(
+    reviewJobFromWebhook(
+      "issue_comment",
+      {
+        ...base,
+        comment: { body: "/review-foo", user: { login: "gregnazario" } },
+      },
+      "gregnazario",
+    ),
+    null,
+  );
+  assert.equal(
+    reviewJobFromWebhook(
+      "issue_comment",
+      {
+        ...base,
+        issue: { ...base.issue, labels: [{ name: "skip-review" }] },
+      },
+      "gregnazario",
+    ),
+    null,
+  );
 });

@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Configuration – hedgehog-pr-bot</title>
+    <meta
+      name="description"
+      content="Environment variable reference for hedgehog-pr-bot: server, models, GitHub App, and the hourly recovery scan."
+    />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Ctext y=%27.9em%27 font-size=%2790%27%3E%F0%9F%A6%94%3C/text%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="site">
+      <div class="inner">
+        <a class="brand" href="index.html"><span aria-hidden="true">🦔</span> hedgehog-pr-bot</a>
+        <nav class="main" aria-label="Main">
+          <a href="index.html">Overview</a>
+          <a href="configuration.html" aria-current="page">Configuration</a>
+          <a href="self-hosting.html">Self-hosting</a>
+          <a href="https://github.com/gregnazario/hedgehog-pr-bot">GitHub</a>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <h1>Configuration</h1>
+      <p>
+        Everything is configured through environment variables (a <code>.env</code> file
+        next to <code>compose.yaml</code>). The server validates its inputs at startup;
+        the reviewer fingerprint below decides whether a head is considered
+        “already reviewed”.
+      </p>
+
+      <h2>Server</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Variable</th>
+            <th>Default</th>
+            <th>Purpose</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>APP_CLIENT_ID</code></td>
+            <td>required</td>
+            <td>GitHub App client ID (<code>Iv1.…</code>); an App ID also works.</td>
+          </tr>
+          <tr>
+            <td><code>APP_PRIVATE_KEY_BASE64</code></td>
+            <td>required*</td>
+            <td>
+              Base64-encoded App private key PEM. Generate with
+              <code>base64 &lt; app.private-key.pem | tr -d '\n'</code>. *Either this or
+              <code>APP_PRIVATE_KEY</code> is required.
+            </td>
+          </tr>
+          <tr>
+            <td><code>APP_PRIVATE_KEY</code></td>
+            <td>—</td>
+            <td>Alternative to base64: the PEM with <code>\n</code> escapes.</td>
+          </tr>
+          <tr>
+            <td><code>GITHUB_WEBHOOK_SECRET</code></td>
+            <td>required</td>
+            <td>
+              High-entropy secret, identical to the one set on the GitHub App webhook.
+              Generate with <code>openssl rand -hex 32</code>.
+            </td>
+          </tr>
+          <tr>
+            <td><code>BOT_LOGIN</code></td>
+            <td><code>hedgehog-pr-bot</code></td>
+            <td>
+              Your GitHub App’s bot account, e.g. <code>my-reviewer</code> for
+              <code>my-reviewer[bot]</code>. Needed so the bot recognizes its own 👀,
+              threads, and reviews. Set it when self-hosting with a differently named App.
+            </td>
+          </tr>
+          <tr>
+            <td><code>PR_AUTHOR</code></td>
+            <td><code>gregnazario</code></td>
+            <td>Only review pull requests opened by this GitHub user. Set this to yourself.</td>
+          </tr>
+          <tr>
+            <td><code>PI_MODELS</code></td>
+            <td><code>zai/glm-5.3:high</code></td>
+            <td>
+              Comma-separated reviewers in <code>provider/model[:thinking]</code> form.
+              Thinking levels: <code>off minimal low medium high xhigh max</code>. Changing
+              the list changes the review fingerprint, so open PRs get re-reviewed.
+            </td>
+          </tr>
+          <tr>
+            <td><code>MAX_DIFF_CHARS</code></td>
+            <td><code>4000000</code></td>
+            <td>Diff cap sent to each model; larger diffs are truncated.</td>
+          </tr>
+          <tr>
+            <td><code>HOST</code> / <code>PORT</code></td>
+            <td><code>0.0.0.0</code> / <code>3000</code></td>
+            <td>Listen address inside the container.</td>
+          </tr>
+          <tr>
+            <td><code>BIND_ADDRESS</code> / <code>BIND_PORT</code></td>
+            <td><code>127.0.0.1</code> / <code>3000</code></td>
+            <td>Docker Compose host-side binding for your TLS proxy.</td>
+          </tr>
+          <tr>
+            <td><code>PI_VERSION</code></td>
+            <td><code>0.84.2</code></td>
+            <td>Pi version stamped into review footers and baked into the image.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2>Model credentials</h2>
+      <p>
+        Each configured provider needs its API key in the environment — Pi reads them
+        directly. The default setup uses <code>ZAI_API_KEY</code> (Z.AI Coding Plan). Pi
+        also supports providers such as Anthropic, OpenAI, OpenRouter, Gemini, xAI, and
+        DeepSeek; add only the key variables for the models you configure, for example:
+      </p>
+      <pre><code>PI_MODELS=zai/glm-5.3:high,anthropic/claude-sonnet-4-5:high
+ZAI_API_KEY=…
+ANTHROPIC_API_KEY=…</code></pre>
+
+      <h2>Hourly recovery scan</h2>
+      <p>
+        The optional GitHub Actions workflow re-reviews open PRs the server may have
+        missed while down. It uses its own short-lived installation token, so it needs no
+        server credentials:
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Variable</th>
+            <th>Default</th>
+            <th>Purpose</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>GH_TOKEN</code></td>
+            <td>required</td>
+            <td>Provided by <code>actions/create-github-app-token</code> in the workflow.</td>
+          </tr>
+          <tr>
+            <td><code>MAX_REVIEWS_PER_RUN</code></td>
+            <td><code>5</code></td>
+            <td>Cap on reviews per hourly run.</td>
+          </tr>
+          <tr>
+            <td><code>PI_MODELS</code>, <code>PR_AUTHOR</code>, <code>BOT_LOGIN</code></td>
+            <td>as above</td>
+            <td>Keep these identical to the server so markers match.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2>GitHub App settings</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Permission</th>
+            <th>Access</th>
+            <th>Used for</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Contents</td>
+            <td>read</td>
+            <td>Reading pull-request diffs.</td>
+          </tr>
+          <tr>
+            <td>Issues</td>
+            <td>read &amp; write</td>
+            <td>Reading <code>/review</code> comments.</td>
+          </tr>
+          <tr>
+            <td>Pull requests</td>
+            <td>read &amp; write</td>
+            <td>Reviews, dismissals, thread replies, the 👀 reaction.</td>
+          </tr>
+          <tr>
+            <td>Checks</td>
+            <td>write</td>
+            <td>The <code>Pi review</code> check run.</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        Subscribe to the <strong>Pull request</strong> and <strong>Issue comment</strong>
+        webhook events. There is no separate “Reactions” permission in GitHub App settings.
+      </p>
+
+      <h2>Commands and labels</h2>
+      <ul>
+        <li>
+          <code>/review</code> — comment this on your PR to force a re-review of the
+          current head. Only the configured <code>PR_AUTHOR</code> may use it.
+        </li>
+        <li>
+          <code>skip-review</code> label — silence the bot on that PR: no queueing, no 👀,
+          no check, and <code>/review</code> is ignored. Removing the label does not
+          auto-trigger a review.
+        </li>
+      </ul>
+
+      <h2>Review and check outcomes</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Pass result</th>
+            <th>GitHub review</th>
+            <th>Check</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>No findings, no still-applying threads</td>
+            <td>Approve — “No new findings.”</td>
+            <td>✅ <code>success</code></td>
+          </tr>
+          <tr>
+            <td>Any Critical or High</td>
+            <td>Request changes</td>
+            <td>⚠️ <code>action_required</code></td>
+          </tr>
+          <tr>
+            <td>Medium/Low only</td>
+            <td>Comment; own blocking reviews dismissed</td>
+            <td>ℹ️ <code>success</code></td>
+          </tr>
+          <tr>
+            <td>Pi or GitHub failure</td>
+            <td>Nothing posted</td>
+            <td>❌ <code>failure</code></td>
+          </tr>
+        </tbody>
+      </table>
+    </main>
+
+    <footer class="site">
+      <div class="inner">
+        <span>🦔 hedgehog-pr-bot — open source under the repository license.</span>
+        <span
+          ><a href="https://github.com/gregnazario/hedgehog-pr-bot">gregnazario/hedgehog-pr-bot</a></span
+        >
+      </div>
+    </footer>
+  </body>
+</html>
