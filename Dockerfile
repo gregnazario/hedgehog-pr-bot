@@ -20,4 +20,4 @@ ENV HOST=0.0.0.0 \
 
 USER node
 EXPOSE 3000
-CMD ["node", "src/server.mjs"]
+CMD ["node", "--disable-warning=ExperimentalWarning", "src/server.ts"]

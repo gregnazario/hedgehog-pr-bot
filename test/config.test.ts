@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { loadReviewConfig, parseModelSpecs, reviewMarker } from "../src/config.mjs";
+import { loadReviewConfig, parseModelSpecs, reviewMarker } from "../src/config.ts";
 
 test("parses multiple Pi model specifications", () => {
   assert.deepEqual(parseModelSpecs("zai/glm-5.3:high,openai/gpt-5:medium"), [
@@ -16,8 +16,10 @@ test("review fingerprint changes with the model configuration", () => {
 });
 
 test("review marker encodes head SHA and config fingerprint", () => {
-  assert.equal(
-    reviewMarker("abc", "fp12"),
-    "<!-- greg-pr-bot-review head:abc config:fp12 -->",
-  );
+  assert.equal(reviewMarker("abc", "fp12"), "<!-- greg-pr-bot-review head:abc config:fp12 -->");
+});
+
+test("review config reads the bot login with a hedgehog default", () => {
+  assert.equal(loadReviewConfig({}).botLogin, "hedgehog-pr-bot");
+  assert.equal(loadReviewConfig({ BOT_LOGIN: "MyReviewer[Bot]" }).botLogin, "myreviewer[bot]");
 });

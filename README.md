@@ -1,8 +1,15 @@
-# greg-pr-bot
+# hedgehog-pr-bot
 
 An open-source, account-wide pull-request reviewer for `gregnazario`. It uses
 [Pi](https://github.com/earendil-works/pi) as the coding harness. The default model is
 GLM-5.3 through a Z.AI Coding Plan subscription, and the model list is configurable.
+
+The bot is written in strict TypeScript and runs directly on Node.js 24 or newer, which
+strips types natively — there is no build step and no runtime dependency; `typescript`,
+`@types/node`, and `@biomejs/biome` are dev-only tools for typechecking, linting, and
+formatting.
+Documentation for self-hosting and the full configuration reference live at
+<https://gregnazario.github.io/hedgehog-pr-bot/>.
 
 The bot is event driven. A single long-running server receives GitHub App webhooks and
 queues a review immediately when one of your PRs is opened, reopened, marked ready, or
@@ -111,6 +118,7 @@ and key files are ignored by Git. `.env.example` contains placeholders only.
 | `ZAI_API_KEY` | required for default | Z.AI Coding Plan credential used by Pi |
 | `PI_MODELS` | `zai/glm-5.3:high` | Comma-separated `provider/model[:thinking]` reviewers |
 | `PR_AUTHOR` | `gregnazario` | Only review PRs opened by this GitHub user |
+| `BOT_LOGIN` | `hedgehog-pr-bot` | The App's bot account slug; set it when self-hosting under a different App name |
 | `MAX_DIFF_CHARS` | `4000000` | Maximum diff characters sent to each model |
 | `HOST` | `0.0.0.0` | Address inside the container |
 | `PORT` | `3000` | HTTP port |
@@ -131,7 +139,7 @@ the corresponding API-key environment variable needed by each configured model.
 
 ```sh
 docker compose ps
-docker compose logs -f greg-pr-bot
+docker compose logs -f hedgehog-pr-bot
 docker compose pull
 docker compose up -d --build
 ```
@@ -143,8 +151,25 @@ comments are only attached to lines that appear in the pull request diff; anythi
 model cannot place is kept in the review summary. Previous hedgehog threads that are still
 valid get a “Still applies.” reply instead of a duplicate comment, unless the line moved.
 
-Run the test suite with Node.js 24 or newer:
+## Development
+
+The source is TypeScript (`src/*.ts`, `test/*.test.ts`, `scripts/*.ts`) with no build
+step: Node.js 24+ executes `.ts` files by stripping types, so imports use explicit
+`.ts` extensions and only erasable syntax is allowed (no enums or namespaces; enforced
+by `erasableSyntaxOnly` in `tsconfig.json`).
+
+Use bun as the package manager (the lockfile is `bun.lock`). Note that `bun test`
+invokes Bun's own test runner, so use the script form `bun run test` to run the
+Node test suite:
 
 ```sh
-npm test
+bun install        # dev-only: typescript, @types/node, @biomejs/biome
+bun run test       # node --test suite
+bun run typecheck  # tsc --noEmit over src, test, and scripts
+bun run lint       # biome check: formatting, import order, lint rules
+bun run format     # biome format --write
+bun run fix        # biome check --write: format + safe lint/import fixes
 ```
+
+The Compose image installs no project dependencies at all; it copies `src/` and
+`scripts/` and runs `node src/server.ts` directly.

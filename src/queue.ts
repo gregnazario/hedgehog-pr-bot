@@ -1,39 +1,42 @@
-export class SerialDedupeQueue {
-  constructor(handler, { onError = (error) => console.error(error), onReplace } = {}) {
+export interface QueueOptions<Job> {
+  onError?: (error: Error, job: Job) => void;
+}
+
+export class SerialDedupeQueue<Job extends { key: string }> {
+  private readonly handler: (job: Job) => Promise<unknown>;
+  private readonly onError: (error: Error, job: Job) => void;
+  private readonly pending = new Map<string, Job>();
+  private readonly order: string[] = [];
+  private readonly idleWaiters: Array<() => void> = [];
+  private running = false;
+
+  constructor(handler: (job: Job) => Promise<unknown>, { onError }: QueueOptions<Job> = {}) {
     this.handler = handler;
-    this.onError = onError;
-    this.onReplace = onReplace;
-    this.pending = new Map();
-    this.order = [];
-    this.running = false;
-    this.idleWaiters = [];
+    this.onError = onError ?? ((error) => console.error(error));
   }
 
-  enqueue(job) {
-    const previous = this.pending.get(job.key);
+  enqueue(job: Job): void {
     if (!this.pending.has(job.key)) this.order.push(job.key);
     this.pending.set(job.key, job);
-    if (previous && this.onReplace) {
-      queueMicrotask(() => this.onReplace(previous, job));
-    }
     if (!this.running) queueMicrotask(() => this.drain());
   }
 
-  get size() {
+  get size(): number {
     return this.pending.size + (this.running ? 1 : 0);
   }
 
-  onIdle() {
+  onIdle(): Promise<void> {
     if (!this.running && this.pending.size === 0) return Promise.resolve();
     return new Promise((resolve) => this.idleWaiters.push(resolve));
   }
 
-  async drain() {
+  private async drain(): Promise<void> {
     if (this.running) return;
     this.running = true;
     try {
       while (this.order.length > 0) {
         const key = this.order.shift();
+        if (key === undefined) continue;
         const job = this.pending.get(key);
         this.pending.delete(key);
         if (!job) continue;

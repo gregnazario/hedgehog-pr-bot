@@ -1,5 +1,5 @@
 services:
-  greg-pr-bot:
+  hedgehog-pr-bot:
     build: .
     restart: unless-stopped
     env_file: .env

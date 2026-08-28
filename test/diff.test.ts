@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { annotateDiff, indexDiffLocations, resolveCommentAnchor } from "../src/diff.mjs";
+import { annotateDiff, indexDiffLocations, resolveCommentAnchor } from "../src/diff.ts";
 
 const modifiedDiff = `diff --git a/src/app.mjs b/src/app.mjs
 index 111..222 100644
@@ -70,26 +70,46 @@ rename to new.mjs
 
 test("annotates hunk lines with LEFT/RIGHT file numbers", () => {
   const annotated = annotateDiff(modifiedDiff);
-  assert.match(annotated, /\[RIGHT 2\] \+  return a \+ b;/);
-  assert.match(annotated, /\[LEFT 2\] -  return a - b;/);
+  assert.match(annotated, /\[RIGHT 2\] \+ {2}return a \+ b;/);
+  assert.match(annotated, /\[LEFT 2\] - {2}return a - b;/);
   assert.match(annotated, /\[RIGHT 4\] \+export const VERSION = 1;/);
 });
 
 test("resolves a comment to an exact diff line", () => {
   const locations = indexDiffLocations(modifiedDiff);
-  assert.deepEqual(resolveCommentAnchor(locations, { path: "src/app.mjs", line: 4, side: "RIGHT" }), {
-    path: "src/app.mjs",
-    line: 4,
-    side: "RIGHT",
-  });
+  assert.deepEqual(
+    resolveCommentAnchor(locations, { path: "src/app.mjs", line: 4, side: "RIGHT" }),
+    {
+      path: "src/app.mjs",
+      line: 4,
+      side: "RIGHT",
+    },
+  );
 });
 
 test("snaps a nearby line onto the same file and side", () => {
   const locations = indexDiffLocations(modifiedDiff);
   const anchor = resolveCommentAnchor(locations, { path: "src/app.mjs", line: 5, side: "RIGHT" });
+  assert.ok(anchor);
   assert.equal(anchor.path, "src/app.mjs");
   assert.equal(anchor.side, "RIGHT");
   assert.equal(anchor.line, 4);
+});
+
+test("snaps an equidistant request to the smaller line number", () => {
+  const diff = `diff --git a/tie.mjs b/tie.mjs
+--- a/tie.mjs
++++ b/tie.mjs
+@@ -1,1 +1,1 @@
+ first
+@@ -9,1 +9,1 @@
+ ninth
+`;
+  const locations = indexDiffLocations(diff);
+  const anchor = resolveCommentAnchor(locations, { path: "tie.mjs", line: 5, side: "RIGHT" });
+  assert.ok(anchor);
+  assert.equal(anchor.side, "RIGHT");
+  assert.equal(anchor.line, 1);
 });
 
 test("uses an exact line on the other side before snapping", () => {
@@ -111,19 +131,25 @@ deleted file mode 100644
 
 test("keeps comments on a single line even when start_line is present", () => {
   const locations = indexDiffLocations(modifiedDiff);
-  assert.deepEqual(resolveCommentAnchor(locations, {
-    path: "src/app.mjs",
-    line: 4,
-    side: "RIGHT",
-    start_line: 1,
-  }), {
-    path: "src/app.mjs",
-    line: 4,
-    side: "RIGHT",
-  });
+  assert.deepEqual(
+    resolveCommentAnchor(locations, {
+      path: "src/app.mjs",
+      line: 4,
+      side: "RIGHT",
+      start_line: 1,
+    }),
+    {
+      path: "src/app.mjs",
+      line: 4,
+      side: "RIGHT",
+    },
+  );
 });
 
 test("returns null when the file is not in the diff", () => {
   const locations = indexDiffLocations(modifiedDiff);
-  assert.equal(resolveCommentAnchor(locations, { path: "missing.mjs", line: 1, side: "RIGHT" }), null);
+  assert.equal(
+    resolveCommentAnchor(locations, { path: "missing.mjs", line: 1, side: "RIGHT" }),
+    null,
+  );
 });
