@@ -1,0 +1,219 @@
+:root {
+  --bg: #fdf9f4;
+  --fg: #241f1a;
+  --muted: #6b6157;
+  --card: #ffffff;
+  --border: #e8ddd0;
+  --accent: #b45309;
+  --accent-soft: #fdf0e0;
+  --code-bg: #f4ede4;
+  --link: #9a3412;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1a1613;
+    --fg: #ece5dc;
+    --muted: #a1968a;
+    --card: #241f1a;
+    --border: #3a322a;
+    --accent: #f59e0b;
+    --accent-soft: #33270f;
+    --code-bg: #2b251f;
+    --link: #fbbf24;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  line-height: 1.65;
+}
+
+header.site {
+  border-bottom: 1px solid var(--border);
+  background: var(--card);
+}
+
+header.site .inner {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  padding: 0.9rem 1.25rem;
+}
+
+.brand {
+  font-weight: 700;
+  font-size: 1.1rem;
+  text-decoration: none;
+  color: var(--fg);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+a {
+  color: var(--link);
+}
+
+nav.main {
+  display: flex;
+  gap: 1.1rem;
+  flex-wrap: wrap;
+}
+
+nav.main a {
+  color: var(--muted);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+nav.main a:hover,
+nav.main a[aria-current="page"] {
+  color: var(--accent);
+}
+
+main {
+  max-width: 52rem;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 4rem;
+}
+
+h1 {
+  font-size: 2rem;
+  line-height: 1.2;
+  margin: 0 0 0.75rem;
+}
+
+h2 {
+  font-size: 1.35rem;
+  margin-top: 2.5rem;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.35rem;
+}
+
+h3 {
+  font-size: 1.05rem;
+  margin-top: 1.8rem;
+}
+
+code {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.875em;
+  background: var(--code-bg);
+  border-radius: 0.35rem;
+  padding: 0.1rem 0.35rem;
+}
+
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.9rem 1.1rem;
+  overflow-x: auto;
+}
+
+pre code {
+  background: none;
+  padding: 0;
+  font-size: 0.85rem;
+  line-height: 1.55;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+  font-size: 0.925rem;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 0.55rem 0.7rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+th {
+  background: var(--card);
+  font-weight: 600;
+}
+
+td code {
+  white-space: nowrap;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  padding: 1.1rem 1.3rem;
+  margin: 1rem 0;
+}
+
+.card p:last-child {
+  margin-bottom: 0;
+}
+
+.note {
+  border-left: 3px solid var(--accent);
+  background: var(--accent-soft);
+  border-radius: 0 0.5rem 0.5rem 0;
+  padding: 0.75rem 1rem;
+  margin: 1.25rem 0;
+}
+
+.note p:last-child {
+  margin-bottom: 0;
+}
+
+ol.steps {
+  padding-left: 1.2rem;
+}
+
+ol.steps > li {
+  margin: 1.1rem 0;
+}
+
+ul.checks {
+  list-style: none;
+  padding-left: 0;
+}
+
+ul.checks li {
+  padding-left: 1.4rem;
+  position: relative;
+  margin: 0.35rem 0;
+}
+
+ul.checks li::before {
+  content: "✓";
+  position: absolute;
+  left: 0;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+footer.site {
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+footer.site .inner {
+  max-width: 52rem;
+  margin: 0 auto;
+  padding: 1.25rem;
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  justify-content: space-between;
+}

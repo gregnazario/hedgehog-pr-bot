@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>hedgehog-pr-bot</title>
+    <meta
+      name="description"
+      content="An open-source, account-wide pull-request reviewer that runs Pi on your own GitHub App."
+    />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Ctext y=%27.9em%27 font-size=%2790%27%3E%F0%9F%A6%94%3C/text%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="site">
+      <div class="inner">
+        <a class="brand" href="index.html"><span aria-hidden="true">🦔</span> hedgehog-pr-bot</a>
+        <nav class="main" aria-label="Main">
+          <a href="index.html" aria-current="page">Overview</a>
+          <a href="configuration.html">Configuration</a>
+          <a href="self-hosting.html">Self-hosting</a>
+          <a href="https://github.com/gregnazario/hedgehog-pr-bot">GitHub</a>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <h1>Your own AI code reviewer, wired straight into GitHub</h1>
+      <p>
+        hedgehog-pr-bot is an open-source pull-request reviewer. It listens to GitHub App
+        webhooks for every pull request you open, sends the diff to
+        <a href="https://github.com/earendil-works/pi">Pi</a> (a coding-agent harness), and
+        posts the findings back as real GitHub review comments — on the exact lines, with
+        severity, follow-up on its own previous threads, and a check run that reflects the
+        outcome. No workflow file is needed in any reviewed repository.
+      </p>
+
+      <h2>How a review runs</h2>
+      <ol class="steps">
+        <li>
+          A webhook fires when one of your pull requests is opened, reopened, marked ready
+          for review, or pushed to. You can also comment <code>/review</code> on a PR to
+          force a re-run. The request is HMAC-verified and queued — one review runs at a
+          time, and only the newest head per PR is kept.
+        </li>
+        <li>
+          The worker re-checks the PR (still open, not a draft, right author, no
+          <code>skip-review</code> label, not already reviewed for this head + model
+          configuration), then adds a 👀 reaction and an in-progress
+          <code>Pi review</code> check run.
+        </li>
+        <li>
+          It fetches the diff plus its own still-open review threads, annotates line
+          numbers into the diff, and runs a single Pi pass per configured model.
+        </li>
+        <li>
+          Findings are posted as one GitHub review with inline comments. Fixed threads are
+          resolved, still-valid ones get a “Still applies.” reply, and comments whose code
+          moved are re-anchored. A clean pass approves; Critical/High findings request
+          changes; Medium/Low only comment and clear the bot’s own blocking reviews.
+        </li>
+        <li>
+          The check run finishes as ✅ clean, ℹ️ comments only, ⚠️ high/critical, or ❌ when
+          the runner itself failed — findings never mark the build red.
+        </li>
+      </ol>
+
+      <h2>What it looks at</h2>
+      <div class="card">
+        <ul class="checks">
+          <li>Security vulnerabilities and unsafe trust boundaries</li>
+          <li>Correctness bugs and edge cases</li>
+          <li>Performance and scalability problems</li>
+          <li>Reliability, maintainability, and general code quality</li>
+        </ul>
+      </div>
+
+      <h2>Highlights</h2>
+      <ul>
+        <li>
+          <strong>Account-wide by installation.</strong> Install the GitHub App on all your
+          repositories (or a subset) — no per-repo setup.
+        </li>
+        <li>
+          <strong>Model-agnostic.</strong> The default is GLM-5.3 via a Z.AI Coding Plan,
+          and <code>PI_MODELS</code> accepts any provider Pi supports, with per-model
+          thinking levels. Multiple models review each revision independently.
+        </li>
+        <li>
+          <strong>Idempotent.</strong> A hidden marker per head SHA and model configuration
+          means webhooks and the hourly recovery scan never double-post a review.
+        </li>
+        <li>
+          <strong>Hardened by default.</strong> Webhook signatures are verified
+          constant-time; tokens, the App private key, and the webhook secret are stripped
+          from the model’s environment; the container runs read-only, unprivileged, with no
+          capabilities.
+        </li>
+        <li>
+          <strong>Boring stack.</strong> One Node.js process, zero runtime dependencies,
+          strict TypeScript executed natively, Docker Compose for deployment.
+        </li>
+      </ul>
+
+      <h2>Can I run it myself?</h2>
+      <p>
+        Yes — it is designed for one GitHub account (yours), not as a multi-tenant
+        service. You create your own GitHub App, deploy the container anywhere with a
+        public HTTPS endpoint, and point the App’s webhook at it. The
+        <a href="self-hosting.html">self-hosting guide</a> walks through the whole setup,
+        and the <a href="configuration.html">configuration reference</a> covers every
+        environment variable.
+      </p>
+    </main>
+
+    <footer class="site">
+      <div class="inner">
+        <span>🦔 hedgehog-pr-bot — open source under the repository license.</span>
+        <span
+          ><a href="https://github.com/gregnazario/hedgehog-pr-bot">gregnazario/hedgehog-pr-bot</a></span
+        >
+      </div>
+    </footer>
+  </body>
+</html>

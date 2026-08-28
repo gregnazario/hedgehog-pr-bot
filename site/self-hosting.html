@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Self-hosting – hedgehog-pr-bot</title>
+    <meta
+      name="description"
+      content="Run hedgehog-pr-bot for your own GitHub account: GitHub App setup, Docker deployment, and the hourly recovery workflow."
+    />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Ctext y=%27.9em%27 font-size=%2790%27%3E%F0%9F%A6%94%3C/text%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="site">
+      <div class="inner">
+        <a class="brand" href="index.html"><span aria-hidden="true">🦔</span> hedgehog-pr-bot</a>
+        <nav class="main" aria-label="Main">
+          <a href="index.html">Overview</a>
+          <a href="configuration.html">Configuration</a>
+          <a href="self-hosting.html" aria-current="page">Self-hosting</a>
+          <a href="https://github.com/gregnazario/hedgehog-pr-bot">GitHub</a>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <h1>Self-hosting</h1>
+      <p>
+        Yes, you can run it. hedgehog-pr-bot is built for <strong>one GitHub account —
+        yours</strong>, not as a multi-tenant service. You bring your own GitHub App, a
+        host with a public HTTPS endpoint, and a model API key. Everything else is one
+        Docker Compose service.
+      </p>
+
+      <div class="note">
+        <p>
+          <strong>Heads-up on naming:</strong> GitHub App slugs are globally unique and
+          <code>hedgehog-pr-bot</code> is taken, so name your App anything you like and set
+          <code>BOT_LOGIN</code> to its bot account slug (the part before
+          <code>[bot]</code>). Without it the bot cannot recognize its own threads, 👀, and
+          reviews, so thread follow-up and unblocking dismissal degrade.
+        </p>
+      </div>
+
+      <h2>What you need</h2>
+      <ul class="checks">
+        <li>A GitHub account (personal or org) allowed to create GitHub Apps.</li>
+        <li>
+          A Docker host with a public HTTPS endpoint — a small VPS with
+          <a href="https://caddyserver.com/">Caddy</a> or nginx in front, or a tunnel such
+          as Cloudflare Tunnel.
+        </li>
+        <li>An API key for at least one model provider Pi supports (Z.AI, Anthropic, OpenAI, …).</li>
+        <li>Node.js 24+ only if you want to run the test suite or typecheck locally.</li>
+      </ul>
+
+      <h2>1. Create your GitHub App</h2>
+      <ol class="steps">
+        <li>
+          Go to <em>Settings → Developer settings → GitHub Apps → New GitHub App</em>. Pick
+          any name (this becomes the bot account, e.g. <code>my-reviewer[bot]</code>) and
+          note the slug for <code>BOT_LOGIN</code>.
+        </li>
+        <li>
+          Set the webhook URL to
+          <code>https://<em>your-host</em>/github/webhook</code> and the webhook secret to
+          a fresh <code>openssl rand -hex 32</code> value — the same value you will put in
+          <code>GITHUB_WEBHOOK_SECRET</code>.
+        </li>
+        <li>
+          Under <em>Permissions &amp; events</em>: Contents <strong>read</strong>;
+          Issues <strong>read &amp; write</strong>; Pull requests
+          <strong>read &amp; write</strong>; Checks <strong>write</strong>. Subscribe to
+          the <strong>Pull request</strong> and <strong>Issue comment</strong> events.
+        </li>
+        <li>
+          Generate a private key at the bottom of the App page, then base64 it:
+          <pre><code>base64 &lt; app.private-key.pem | tr -d '\n'</code></pre>
+          Note the <em>Client ID</em> (<code>Iv1.…</code>) shown on the same page.
+        </li>
+        <li>Install the App on your account — all repositories, or the subset to review.</li>
+      </ol>
+
+      <h2>2. Deploy the server</h2>
+      <ol class="steps">
+        <li>Clone (or fork) the repository onto your host.</li>
+        <li>
+          Copy <code>.env.example</code> to <code>.env</code> and fill it in:
+          <pre><code>APP_CLIENT_ID=Iv1.xxxx
+APP_PRIVATE_KEY_BASE64=base64-pem
+GITHUB_WEBHOOK_SECRET=your-webhook-secret
+ZAI_API_KEY=your-model-key
+
+BOT_LOGIN=my-reviewer
+PR_AUTHOR=your-username
+PI_MODELS=zai/glm-5.3:high</code></pre>
+        </li>
+        <li>
+          Start it and confirm health:
+          <pre><code>docker compose up -d --build
+curl -s https://your-host/healthz   # {"ok":true,...}</code></pre>
+        </li>
+      </ol>
+      <p>
+        The container runs as an unprivileged user, read-only, with all Linux capabilities
+        dropped, and binds <code>127.0.0.1:3000</code> on the host by default for your TLS
+        proxy. Set <code>BIND_ADDRESS=0.0.0.0</code> only if your firewall and proxy
+        require it.
+      </p>
+
+      <h2>3. Optional: hourly recovery scan</h2>
+      <p>
+        Webhook deliveries can be missed while the server is down. The included
+        <code>.github/workflows/review.yml</code> reconciles open PRs hourly using a
+        short-lived App token minted inside Actions. On a fork:
+      </p>
+      <ol class="steps">
+        <li>Enable Actions on your fork.</li>
+        <li>
+          Add repository secrets <code>APP_PRIVATE_KEY</code> and
+          <code>ZAI_API_KEY</code>, and variables <code>APP_CLIENT_ID</code> and (optionally)
+          <code>PI_MODELS</code>.
+        </li>
+        <li>
+          Edit the workflow’s token step to target your owner (or remove the
+          <code>owner:</code> line so it defaults to the repository owner) and set
+          <code>PR_AUTHOR</code>/<code>BOT_LOGIN</code> in the run step’s environment to
+          match your server.
+        </li>
+      </ol>
+      <p>
+        Keep <code>PI_MODELS</code> identical between server and scan — the review
+        fingerprint is derived from it, and a mismatch means everything gets re-reviewed.
+      </p>
+
+      <h2>Day-to-day</h2>
+      <pre><code>docker compose ps
+docker compose logs -f hedgehog-pr-bot
+docker compose up -d --build   # after pulling changes</code></pre>
+      <ul>
+        <li>Queue is in memory; restarts lose pending work and the hourly scan recovers it.</li>
+        <li>
+          Reviews run sequentially so you don’t hammer your model plan; a new push while a
+          review runs simply queues behind it.
+        </li>
+        <li>
+          Big diffs are capped at <code>MAX_DIFF_CHARS</code> (4M by default) — split huge
+          PRs for better feedback.
+        </li>
+      </ul>
+
+      <h2>Costs and limits</h2>
+      <ul>
+        <li>
+          Model usage is yours: one Pi pass per configured model per reviewed head. The
+          hourly scan caps itself at <code>MAX_REVIEWS_PER_RUN</code> (5).
+        </li>
+        <li>Single-author by design: only <code>PR_AUTHOR</code>’s PRs are reviewed.</li>
+        <li>
+          Security posture: webhook signatures verified before parsing; tokens, the App
+          key, and the webhook secret removed from the model’s environment; Pi runs with
+          tools, extensions, skills, and sessions disabled, and PR text is treated as
+          untrusted data — never instructions.
+        </li>
+      </ul>
+    </main>
+
+    <footer class="site">
+      <div class="inner">
+        <span>🦔 hedgehog-pr-bot — open source under the repository license.</span>
+        <span
+          ><a href="https://github.com/gregnazario/hedgehog-pr-bot">gregnazario/hedgehog-pr-bot</a></span
+        >
+      </div>
+    </footer>
+  </body>
+</html>
