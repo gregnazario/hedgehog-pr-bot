@@ -251,11 +251,12 @@ export interface ReviewComment {
   in_reply_to_id?: number;
 }
 
-export type AppClient = ReviewerClient & ProgressClient;
-
+/** Used by the server to acknowledge /review trigger comments. */
 export interface AckClient {
   reactToIssueComment?(fullName: string, commentId: number, content: string): Promise<unknown>;
 }
+
+export type AppClient = ReviewerClient & ProgressClient & AckClient;
 
 export interface TokenProvider {
   get(installationId: number): Promise<string>;

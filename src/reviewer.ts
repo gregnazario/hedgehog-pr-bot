@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { reviewMarker } from "./config.ts";
 import { annotateDiff, indexDiffLocations } from "./diff.ts";
 import { errorMessage } from "./errors.ts";
-import { finishProgress } from "./progress.ts";
+import { finishProgress, reportModelProgress } from "./progress.ts";
 import { buildReviewBody, parseReviewOutput, toReviewComments } from "./review-format.ts";
 import {
   applyThreadDecisions,
@@ -61,6 +61,7 @@ export async function reviewPullRequest({
       number,
       config,
       force,
+      checkRunId,
       runModel,
       logger,
     });
@@ -92,6 +93,7 @@ interface ReviewRun {
   number: number;
   config: ReviewConfig;
   force: boolean;
+  checkRunId?: number;
   runModel: (bundle: string, modelSpec: ModelSpec) => Promise<string>;
   logger: Logger;
 }
@@ -102,6 +104,7 @@ async function runReview({
   number,
   config,
   force,
+  checkRunId,
   runModel,
   logger,
 }: ReviewRun): Promise<ReviewResult> {
@@ -128,9 +131,11 @@ async function runReview({
     modelSpec: ModelSpec;
     parsed: ReturnType<typeof parseReviewOutput>;
   }> = [];
-  for (const modelSpec of config.models) {
+  let findingsSoFar = 0;
+  for (const [index, modelSpec] of config.models.entries()) {
     logger.log(`Running ${modelSpec.label} for ${fullName}#${number}`);
     const parsed = parseReviewOutput(await runModel(bundle, modelSpec));
+    findingsSoFar += parsed.findings.length;
     parsedReviews.push({
       modelSpec,
       parsed: {
@@ -138,6 +143,17 @@ async function runReview({
         findings: parsed.findings.map((finding) => ({ ...finding, modelLabel: modelSpec.label })),
       },
     });
+    if (config.models.length > 1) {
+      await reportModelProgress(client, {
+        fullName,
+        checkRunId,
+        modelsDone: index + 1,
+        modelsTotal: config.models.length,
+        findingsSoFar,
+        lastLabel: modelSpec.label,
+        logger,
+      });
+    }
   }
 
   const includeModel = config.models.length > 1;

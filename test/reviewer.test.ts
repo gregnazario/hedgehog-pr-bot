@@ -565,7 +565,7 @@ test("removes GitHub App and webhook secrets from Pi's environment", () => {
 });
 
 test("deduplicates multi-model findings that share an anchor", async () => {
-  let posted;
+  let posted: any;
   const twoModelConfig = {
     author: "gregnazario",
     authors: ["gregnazario"],
@@ -607,7 +607,7 @@ test("deduplicates multi-model findings that share an anchor", async () => {
 });
 
 test("notes truncated diffs in the review body", async () => {
-  let posted;
+  let posted: any;
   const client = baseClient({
     createPullRequestReview: async (_repo, _number, payload) => {
       posted = payload;
@@ -622,4 +622,38 @@ test("notes truncated diffs in the review body", async () => {
     logger: { log() {}, error() {} },
   });
   assert.match(posted.body, /diff exceeded the configured size limit/);
+});
+
+test("reports per-model progress on the review check", async () => {
+  const updates: any[] = [];
+  const twoModelConfig = {
+    author: "gregnazario",
+    authors: ["gregnazario"],
+    botLogin: "hedgehog-pr-bot",
+    maxDiffChars: 10_000,
+    fingerprint: "abc123",
+    models: [
+      { provider: "zai", model: "glm-5.3", thinking: "high", label: "zai/glm-5.3:high" },
+      { provider: "zai", model: "glm-4.7", thinking: "high", label: "zai/glm-4.7:high" },
+    ],
+  };
+  const client = baseClient({
+    createPullRequestReview: async () => {},
+    updateCheckRun: async (_repo, _id, payload) => updates.push(payload),
+  });
+  await reviewPullRequest({
+    client,
+    fullName: "gregnazario/example",
+    number: 7,
+    config: twoModelConfig,
+    checkRunId: 55,
+    runModel: async () => jsonReview(),
+    logger: { log() {}, error() {} },
+  });
+  const progress = updates.filter((update) => update.status === "in_progress");
+  assert.equal(progress.length, 2);
+  assert.match(progress[0].summary, /1\/2 models done/);
+  assert.match(progress[1].summary, /2\/2 models done/);
+  assert.equal(progress[0].title, "👀 Reviewing…");
+  assert.equal(updates[updates.length - 1].status, "completed");
 });

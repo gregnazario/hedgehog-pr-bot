@@ -55,6 +55,38 @@ export async function startProgress(
   return { eyesReactionId, checkRunId };
 }
 
+export async function reportModelProgress(
+  client: FinishProgressClient,
+  {
+    fullName,
+    checkRunId,
+    modelsDone,
+    modelsTotal,
+    findingsSoFar,
+    lastLabel,
+    logger = console,
+  }: {
+    fullName: string;
+    checkRunId?: number;
+    modelsDone: number;
+    modelsTotal: number;
+    findingsSoFar: number;
+    lastLabel: string;
+    logger?: Logger;
+  },
+): Promise<void> {
+  if (!checkRunId || typeof client.updateCheckRun !== "function") return;
+  try {
+    await client.updateCheckRun(fullName, checkRunId, {
+      status: "in_progress",
+      title: "👀 Reviewing…",
+      summary: `${modelsDone}/${modelsTotal} models done · ${findingsSoFar} findings · last: ${lastLabel}`,
+    });
+  } catch (error) {
+    logger.error?.(`Could not update review progress: ${errorMessage(error)}`);
+  }
+}
+
 export async function finishProgress(
   client: FinishProgressClient,
   {

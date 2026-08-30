@@ -281,6 +281,13 @@ export class GitHubClient {
     );
   }
 
+  reactToIssueComment(fullName: string, commentId: number, content: string): Promise<unknown> {
+    return this.request(`/repos/${repoPath(fullName)}/issues/comments/${commentId}/reactions`, {
+      method: "POST",
+      body: { content },
+    });
+  }
+
   createIssueReaction(
     fullName: string,
     number: number,
