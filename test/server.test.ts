@@ -197,10 +197,7 @@ test("does not start progress when this head is already reviewed", async (t) => 
   await queue.onIdle();
   assert.equal(checks.length, 1);
   assert.equal(checks[0].status, "queued");
-  assert.equal(
-    updates[updates.length - 1].conclusion,
-    "skipped",
-  );
+  assert.equal(updates[updates.length - 1].conclusion, "skipped");
   assert.match(updates[updates.length - 1].title, /Already reviewed/);
 });
 

@@ -28,11 +28,7 @@ export interface ProgressSignals {
 /** Opens the queued check shown between webhook acceptance and the review slot. */
 export async function startQueuedProgress(
   client: StartProgressClient,
-  {
-    fullName,
-    headSha,
-    logger = console,
-  }: { fullName: string; headSha?: string; logger?: Logger },
+  { fullName, headSha, logger = console }: { fullName: string; headSha?: string; logger?: Logger },
 ): Promise<number | undefined> {
   try {
     const check = await client.createCheckRun(fullName, {
@@ -91,11 +87,7 @@ export async function startProgress(
 
 async function adoptQueuedCheck(
   client: StartProgressClient,
-  {
-    fullName,
-    checkRunId,
-    logger,
-  }: { fullName: string; checkRunId?: number; logger: Logger },
+  { fullName, checkRunId, logger }: { fullName: string; checkRunId?: number; logger: Logger },
 ): Promise<number | undefined> {
   if (!checkRunId || typeof client.updateCheckRun !== "function") return undefined;
   try {
@@ -138,7 +130,11 @@ export async function abandonQueuedProgress(
 /** Cancels the queued check of a pending job replaced by a newer head. */
 export async function cancelQueuedProgress(
   client: FinishProgressClient,
-  { fullName, checkRunId, logger = console }: { fullName: string; checkRunId?: number; logger?: Logger },
+  {
+    fullName,
+    checkRunId,
+    logger = console,
+  }: { fullName: string; checkRunId?: number; logger?: Logger },
 ): Promise<void> {
   if (!checkRunId || typeof client.updateCheckRun !== "function") return;
   try {
@@ -300,7 +296,12 @@ export async function prepareAcceptedJob<T extends PullRequestRef & { checkRunId
     fingerprint,
     force = false,
     botLogin = DEFAULT_BOT_LOGIN,
-  }: { author?: string | readonly string[]; fingerprint?: string; force?: boolean; botLogin?: string },
+  }: {
+    author?: string | readonly string[];
+    fingerprint?: string;
+    force?: boolean;
+    botLogin?: string;
+  },
   logger: Logger = console,
 ): Promise<(T & PreparedJob) | null> {
   const pullRequest = await client.getPullRequest(job.fullName, job.number);

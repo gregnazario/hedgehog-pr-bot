@@ -4,13 +4,9 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { pathToFileURL } from "node:url";
 import { loadPrivateKey, loadReviewConfig, positiveInteger } from "./config.ts";
 import { errorMessage } from "./errors.ts";
-import { applyIgnoreJob } from "./ignore.ts";
 import { GitHubClient, InstallationTokenProvider } from "./github.ts";
-import {
-  cancelQueuedProgress,
-  prepareAcceptedJob,
-  startQueuedProgress,
-} from "./progress.ts";
+import { applyIgnoreJob } from "./ignore.ts";
+import { cancelQueuedProgress, prepareAcceptedJob, startQueuedProgress } from "./progress.ts";
 import { SerialDedupeQueue } from "./queue.ts";
 import { reviewPullRequest } from "./reviewer.ts";
 import type {

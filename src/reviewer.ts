@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { reviewMarker } from "./config.ts";
 import { annotateDiff, indexDiffLocations } from "./diff.ts";
 import { errorMessage } from "./errors.ts";
+import { findingFingerprint } from "./memory.ts";
 import { finishProgress, reportModelProgress } from "./progress.ts";
 import { buildReviewBody, parseReviewOutput, toReviewComments } from "./review-format.ts";
 import {
@@ -11,8 +12,8 @@ import {
   isHedgehogLogin,
   reviewEventFromSeverities,
   reviewHasCurrentMarker,
-  severityRank,
   STILL_APPLIES_REPLY,
+  severityRank,
   withRerunHint,
 } from "./signals.ts";
 import type {
@@ -40,6 +41,7 @@ export interface ReviewRequest {
   checkRunId?: number;
   eyesReactionId?: number;
   runModel?: (bundle: string, modelSpec: ModelSpec) => Promise<string>;
+  ignoredFingerprints?: ReadonlySet<string>;
   logger?: Logger;
 }
 
@@ -52,6 +54,7 @@ export async function reviewPullRequest({
   checkRunId,
   eyesReactionId,
   runModel = runPi,
+  ignoredFingerprints = new Set<string>(),
   logger = console,
 }: ReviewRequest): Promise<ReviewResult> {
   try {
@@ -63,6 +66,7 @@ export async function reviewPullRequest({
       force,
       checkRunId,
       runModel,
+      ignoredFingerprints,
       logger,
     });
     await finishProgress(client, {
@@ -95,6 +99,7 @@ interface ReviewRun {
   force: boolean;
   checkRunId?: number;
   runModel: (bundle: string, modelSpec: ModelSpec) => Promise<string>;
+  ignoredFingerprints: ReadonlySet<string>;
   logger: Logger;
 }
 
@@ -106,6 +111,7 @@ async function runReview({
   force,
   checkRunId,
   runModel,
+  ignoredFingerprints,
   logger,
 }: ReviewRun): Promise<ReviewResult> {
   const pullRequest = await client.getPullRequest(fullName, number);
@@ -158,6 +164,9 @@ async function runReview({
 
   const includeModel = config.models.length > 1;
   const merged = mergeParsedReviews(parsedReviews);
+  merged.findings = merged.findings.filter(
+    (finding) => !ignoredFingerprints.has(findingFingerprint(finding)),
+  );
   const decisions = applyThreadDecisions({
     findings: merged.findings,
     addressedCommentIds: merged.addressedCommentIds,

@@ -1,5 +1,10 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { hasSkipReviewLabel, isIgnoreCommand, isReviewedAuthor, isReviewCommand } from "./signals.ts";
+import {
+  hasSkipReviewLabel,
+  isIgnoreCommand,
+  isReviewCommand,
+  isReviewedAuthor,
+} from "./signals.ts";
 import type { ReviewJob } from "./types.ts";
 
 const reviewActions = new Set(["opened", "reopened", "ready_for_review", "synchronize"]);

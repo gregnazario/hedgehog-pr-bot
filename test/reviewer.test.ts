@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { findingFingerprint } from "../src/memory.ts";
 import { buildPiEnvironment, buildReviewBundle, reviewPullRequest } from "../src/reviewer.ts";
 import type { CheckRunUpdate, ReviewerClient } from "../src/types.ts";
 
@@ -591,11 +592,27 @@ test("deduplicates multi-model findings that share an anchor", async () => {
       modelSpec.provider === "zai"
         ? JSON.stringify({
             summary: "Zai pass.",
-            findings: [{ severity: "Low", path: "src/app.mjs", line: 4, side: "RIGHT", body: "Check VERSION." }],
+            findings: [
+              {
+                severity: "Low",
+                path: "src/app.mjs",
+                line: 4,
+                side: "RIGHT",
+                body: "Check VERSION.",
+              },
+            ],
           })
         : JSON.stringify({
             summary: "Claude pass.",
-            findings: [{ severity: "Critical", path: "src/app.mjs", line: 4, side: "RIGHT", body: "VERSION leaks a secret." }],
+            findings: [
+              {
+                severity: "Critical",
+                path: "src/app.mjs",
+                line: 4,
+                side: "RIGHT",
+                body: "VERSION leaks a secret.",
+              },
+            ],
           }),
     logger: { log() {}, error() {} },
   });
@@ -656,4 +673,28 @@ test("reports per-model progress on the review check", async () => {
   assert.match(progress[1].summary, /2\/2 models done/);
   assert.equal(progress[0].title, "👀 Reviewing…");
   assert.equal(updates[updates.length - 1].status, "completed");
+});
+
+test("ignored fingerprints drop matching findings", async () => {
+  let posted: any;
+  const client = baseClient({
+    createPullRequestReview: async (_repo, _number, payload) => {
+      posted = payload;
+    },
+  });
+  const result = await reviewPullRequest({
+    client,
+    fullName: "gregnazario/example",
+    number: 7,
+    config,
+    ignoredFingerprints: new Set([
+      findingFingerprint({ path: "src/app.mjs", body: "Is VERSION used?" }),
+    ]),
+    runModel: async () => jsonReview(),
+    logger: { log() {}, error() {} },
+  });
+  assert.ok(result.status === "reviewed");
+  assert.equal(posted.event, "APPROVE");
+  assert.equal(posted.comments, undefined);
+  assert.match(posted.body, /No new findings/);
 });

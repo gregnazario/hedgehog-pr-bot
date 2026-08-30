@@ -289,12 +289,15 @@ export class GitHubClient {
     const query = name ? `?check_name=${encodeURIComponent(name)}` : "";
     return this.request<{ total_count?: number; check_runs?: unknown[] }>(
       `/repos/${repoPath(fullName)}/commits/${encodeURIComponent(ref)}/check-runs${query}`,
-    ).then((body) => (Array.isArray(body.check_runs) ? body.check_runs : []) as {
-      id: number;
-      name?: string;
-      status?: string;
-      started_at?: string;
-    }[]);
+    ).then(
+      (body) =>
+        (Array.isArray(body.check_runs) ? body.check_runs : []) as {
+          id: number;
+          name?: string;
+          status?: string;
+          started_at?: string;
+        }[],
+    );
   }
 
   getReviewComment(

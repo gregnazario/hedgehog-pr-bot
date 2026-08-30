@@ -148,3 +148,44 @@ test("ignores /review from other users, skip-review, and lookalikes", () => {
     null,
   );
 });
+
+test("/ignore replies under review comments enqueue ignore jobs", () => {
+  const payload = {
+    action: "created",
+    installation: { id: 123 },
+    repository: { full_name: "gregnazario/example" },
+    pull_request: { number: 42 },
+    comment: {
+      id: 602,
+      in_reply_to_id: 501,
+      body: "/ignore please",
+      user: { login: "gregnazario" },
+    },
+  };
+  assert.deepEqual(reviewJobFromWebhook("pull_request_review_comment", payload, "gregnazario"), {
+    key: "gregnazario/example#42",
+    fullName: "gregnazario/example",
+    number: 42,
+    installationId: 123,
+    force: false,
+    kind: "ignore",
+    replyToCommentId: 501,
+    triggerCommentId: 602,
+  });
+  assert.equal(
+    reviewJobFromWebhook(
+      "pull_request_review_comment",
+      { ...payload, comment: { ...payload.comment, user: { login: "someone-else" } } },
+      "gregnazario",
+    ),
+    null,
+  );
+  assert.equal(
+    reviewJobFromWebhook(
+      "pull_request_review_comment",
+      { ...payload, comment: { id: 602, body: "/ignore", user: { login: "gregnazario" } } },
+      "gregnazario",
+    ),
+    null,
+  );
+});
