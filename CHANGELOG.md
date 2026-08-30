@@ -4,6 +4,14 @@ All notable changes to hedgehog-pr-bot are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Derive thread comment sides from line numbers after GitHub removed the `side`
+  field from the GraphQL `PullRequestReviewComment` type; listing unresolved
+  threads no longer errors out (thread follow-up works again).
+
 ## [0.1.0] - 2026-08-29
 
 First tagged release.
