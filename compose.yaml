@@ -20,3 +20,25 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+
+  # Optional automatic TLS: docker compose --profile tls up -d
+  # with DOMAIN=pr.example.com in .env
+  caddy:
+    profiles: ["tls"]
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN when using the tls profile}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - hedgehog-pr-bot
+
+volumes:
+  caddy_data:
+  caddy_config:

@@ -44,10 +44,15 @@
           time, and only the newest head per PR is kept.
         </li>
         <li>
+          Your PR shows a 🥚 <strong>queued</strong> <code>Pi review</code> check the
+          moment the webhook is accepted, so waiting your turn is visible; a newer push
+          cancels the superseded queued check.
+        </li>
+        <li>
           The worker re-checks the PR (still open, not a draft, right author, no
           <code>skip-review</code> label, not already reviewed for this head + model
-          configuration), then adds a 👀 reaction and an in-progress
-          <code>Pi review</code> check run.
+          configuration), then adds a 👀 reaction and adopts the check as in-progress —
+          patched after each model with progress and running findings counts.
         </li>
         <li>
           It fetches the diff plus its own still-open review threads, annotates line
@@ -97,8 +102,14 @@
           capabilities.
         </li>
         <li>
+          <strong>Talks back.</strong> <code>/review</code> forces a re-run (acknowledged
+          with 👀), <code>/ignore</code> under a comment mutes that finding permanently,
+          and completed checks remind you of the re-run command.
+        </li>
+        <li>
           <strong>Boring stack.</strong> One Node.js process, zero runtime dependencies,
-          strict TypeScript executed natively, Docker Compose for deployment.
+          strict TypeScript executed natively, Docker Compose for deployment, Prometheus
+          metrics on <code>/metrics</code>.
         </li>
       </ul>
 

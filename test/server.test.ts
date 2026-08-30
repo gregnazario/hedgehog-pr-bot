@@ -28,6 +28,10 @@ test("serves health checks and authenticates webhook pings", async (t) => {
   assert.equal(health.status, 200);
   assert.deepEqual(await health.json(), { ok: true, queued: 0 });
 
+  const metrics = await fetch(`http://127.0.0.1:${port}/metrics`);
+  assert.equal(metrics.status, 200);
+  assert.match(await metrics.text(), /# TYPE queue_depth gauge\nqueue_depth 0/);
+
   const body = Buffer.from("{}");
   const signature = `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`;
   const ping = await fetch(`http://127.0.0.1:${port}/github/webhook`, {

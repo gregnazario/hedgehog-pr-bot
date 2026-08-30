@@ -1,0 +1,19 @@
+# Pre-fills the GitHub App creation form for self-hosters:
+#   https://github.com/settings/apps/new?manifest=<base64 of this file>
+# Edit the webhook URL to your public host before submitting, then set the same
+# value as GITHUB_WEBHOOK_SECRET. Regenerate the link with:
+#   base64 < .github/app-manifest.yml | tr -d '\n'
+name: hedgehog-pr-bot
+url: https://gregnazario.github.io/hedgehog-pr-bot/
+hook_attributes:
+  url: https://your-host/github/webhook
+public: true
+permissions:
+  contents: read
+  issues: write
+  pull_requests: write
+  checks: write
+events:
+  - pull_request
+  - issue_comment
+  - pull_request_review_comment

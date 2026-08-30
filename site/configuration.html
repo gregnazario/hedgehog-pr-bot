@@ -94,6 +94,32 @@
             </td>
           </tr>
           <tr>
+            <td><code>PR_AUTHORS</code></td>
+            <td><code>PR_AUTHOR</code></td>
+            <td>
+              Comma-separated list of reviewed authors — maintainer mode for repos with
+              outside contributors.
+            </td>
+          </tr>
+          <tr>
+            <td><code>REVIEW_MEMORY_PATH</code></td>
+            <td>unset</td>
+            <td>
+              File persisting <code>/ignore</code> fingerprints so muted findings stay
+              muted. Unset disables the memory; mount a volume in read-only containers.
+            </td>
+          </tr>
+          <tr>
+            <td><code>LOG_FORMAT</code></td>
+            <td><code>text</code></td>
+            <td><code>json</code> emits one <code>{time, level, message}</code> object per log line.</td>
+          </tr>
+          <tr>
+            <td><code>DOMAIN</code></td>
+            <td>unset</td>
+            <td>Required only by the optional compose <code>tls</code> profile (Caddy).</td>
+          </tr>
+          <tr>
             <td><code>MAX_DIFF_CHARS</code></td>
             <td><code>4000000</code></td>
             <td>Diff cap sent to each model; larger diffs are truncated.</td>
@@ -193,15 +219,23 @@ ANTHROPIC_API_KEY=…</code></pre>
         </tbody>
       </table>
       <p>
-        Subscribe to the <strong>Pull request</strong> and <strong>Issue comment</strong>
-        webhook events. There is no separate “Reactions” permission in GitHub App settings.
+        Subscribe to the <strong>Pull request</strong>, <strong>Issue comment</strong>, and
+        <strong>Pull request review comment</strong> webhook events — the last one powers
+        <code>/ignore</code>. There is no separate “Reactions” permission in GitHub App
+        settings.
       </p>
 
       <h2>Commands and labels</h2>
       <ul>
         <li>
           <code>/review</code> — comment this on your PR to force a re-review of the
-          current head. Only the configured <code>PR_AUTHOR</code> may use it.
+          current head. Only reviewed authors may use it, and the bot reacts 👀 to the
+          comment immediately so you know it landed.
+        </li>
+        <li>
+          <code>/ignore</code> — reply this under any hedgehog comment to mute that finding:
+          the thread resolves, the reply gets 👍, and future passes drop matching findings
+          (when <code>REVIEW_MEMORY_PATH</code> is set).
         </li>
         <li>
           <code>skip-review</code> label — silence the bot on that PR: no queueing, no 👀,
@@ -209,6 +243,13 @@ ANTHROPIC_API_KEY=…</code></pre>
           auto-trigger a review.
         </li>
       </ul>
+
+      <h2>Observability</h2>
+      <p>
+        <code>GET /healthz</code> answers liveness with the queue depth;
+        <code>GET /metrics</code> serves Prometheus text — webhook events by type, accepted
+        and rejected counts, job results by status, ignore jobs, and queue depth.
+      </p>
 
       <h2>Review and check outcomes</h2>
       <table>
