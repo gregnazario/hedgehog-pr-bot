@@ -63,21 +63,18 @@ function pullRequestWebhookBody() {
   });
 }
 
-test("accepted pull_request webhook returns 202 before GitHub calls", async (t) => {
+test("accepted pull_request webhook opens a queued check before the review runs", async (t) => {
   const secret = "test-secret";
-  let releaseToken: () => void = () => {};
-  const tokenGate = new Promise<void>((resolve) => {
-    releaseToken = resolve;
+  let releaseReview: () => void = () => {};
+  const reviewGate = new Promise<void>((resolve) => {
+    releaseReview = resolve;
   });
   const checks: NewCheckRun[] = [];
+  const updates: any[] = [];
+  let pullsFetched = 0;
   const { server, queue } = createAppServer({
     webhookSecret: secret,
-    tokenProvider: {
-      get: async () => {
-        await tokenGate;
-        return "token";
-      },
-    },
+    tokenProvider: { get: async () => "token" },
     reviewConfig: {
       author: "gregnazario",
       authors: ["gregnazario"],
@@ -88,13 +85,17 @@ test("accepted pull_request webhook returns 202 before GitHub calls", async (t) 
     },
     logger: { log() {}, error() {} },
     createClient: () => ({
-      getPullRequest: async () => ({
-        number: 7,
-        state: "open",
-        draft: false,
-        user: { login: "gregnazario" },
-        head: { sha: "abcdef1dead" },
-      }),
+      getPullRequest: async () => {
+        pullsFetched += 1;
+        await reviewGate;
+        return {
+          number: 7,
+          state: "open",
+          draft: false,
+          user: { login: "gregnazario" },
+          head: { sha: "abcdef1dead" },
+        };
+      },
       listIssueLabels: async () => [],
       listIssueReactions: async () => [],
       createIssueReaction: async () => ({ id: 1 }),
@@ -105,7 +106,7 @@ test("accepted pull_request webhook returns 202 before GitHub calls", async (t) 
       listPullRequestReviews: async () => [],
       getPullRequestDiff: async () => "",
       createPullRequestReview: async () => {},
-      updateCheckRun: async () => {},
+      updateCheckRun: async (_repo, _id, payload) => updates.push(payload),
       deleteIssueReaction: async () => {},
     }),
   });
@@ -124,16 +125,22 @@ test("accepted pull_request webhook returns 202 before GitHub calls", async (t) 
   });
   assert.equal(response.status, 202);
   assert.deepEqual(await response.json(), { accepted: true });
-  assert.equal(checks.length, 0);
-  releaseToken();
-  await queue.onIdle();
   assert.equal(checks.length, 1);
-  assert.equal(checks[0].name, "Pi review");
+  assert.equal(checks[0].status, "queued");
+  assert.equal(updates.length, 0);
+  releaseReview();
+  await queue.onIdle();
+  assert.equal(pullsFetched, 2);
+  assert.equal(checks.length, 1);
+  const adopted = updates.find((update) => update.status === "in_progress");
+  assert.equal(adopted?.title, "👀 Reviewing…");
+  assert.equal(updates[updates.length - 1].status, "completed");
 });
 
 test("does not start progress when this head is already reviewed", async (t) => {
   const secret = "test-secret";
   const checks: NewCheckRun[] = [];
+  const updates: any[] = [];
   const { server, queue } = createAppServer({
     webhookSecret: secret,
     tokenProvider: { get: async () => "token" },
@@ -159,6 +166,7 @@ test("does not start progress when this head is already reviewed", async (t) => 
         checks.push(payload);
         return { id: 9 };
       },
+      updateCheckRun: async (_repo, _id, payload) => updates.push(payload),
       listPullRequestReviews: async () => [
         {
           id: 1,
@@ -187,7 +195,13 @@ test("does not start progress when this head is already reviewed", async (t) => 
   assert.equal(response.status, 202);
   assert.deepEqual(await response.json(), { accepted: true });
   await queue.onIdle();
-  assert.equal(checks.length, 0);
+  assert.equal(checks.length, 1);
+  assert.equal(checks[0].status, "queued");
+  assert.equal(
+    updates[updates.length - 1].conclusion,
+    "skipped",
+  );
+  assert.match(updates[updates.length - 1].title, /Already reviewed/);
 });
 
 test("does not start progress for skip-review PRs", async (t) => {

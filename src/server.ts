@@ -4,8 +4,13 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { pathToFileURL } from "node:url";
 import { loadPrivateKey, loadReviewConfig, positiveInteger } from "./config.ts";
 import { errorMessage } from "./errors.ts";
+import { applyIgnoreJob } from "./ignore.ts";
 import { GitHubClient, InstallationTokenProvider } from "./github.ts";
-import { prepareAcceptedJob } from "./progress.ts";
+import {
+  cancelQueuedProgress,
+  prepareAcceptedJob,
+  startQueuedProgress,
+} from "./progress.ts";
 import { SerialDedupeQueue } from "./queue.ts";
 import { reviewPullRequest } from "./reviewer.ts";
 import type {
@@ -41,11 +46,20 @@ export function createAppServer({
     async (job) => {
       const token = await tokenProvider.get(job.installationId);
       const client = createClient(token);
+      if (job.kind === "ignore") {
+        await applyIgnoreJob(
+          client,
+          job,
+          { botLogin: reviewConfig.botLogin, memoryPath: reviewConfig.memoryPath ?? "" },
+          logger,
+        );
+        return;
+      }
       const prepared = await prepareAcceptedJob(
         client,
         job,
         {
-          author: reviewConfig.author,
+          author: reviewConfig.authors,
           fingerprint: reviewConfig.fingerprint,
           force: Boolean(job.force),
           botLogin: reviewConfig.botLogin,
@@ -66,8 +80,49 @@ export function createAppServer({
     },
     {
       onError: (error, job) => logger.error(`Review failed for ${job.key}: ${errorMessage(error)}`),
+      onReplace: (previous) => {
+        tokenProvider
+          .get(previous.installationId)
+          .then((token) =>
+            cancelQueuedProgress(createClient(token), {
+              fullName: previous.fullName,
+              checkRunId: previous.checkRunId,
+              logger,
+            }),
+          )
+          .catch((error) =>
+            logger.error(
+              `Could not cancel superseded check for ${previous.key}: ${errorMessage(error)}`,
+            ),
+          );
+      },
     },
   );
+
+  // Runs in the webhook request: one round trip for the queued check (well
+  // under GitHub's delivery timeout) so the PR shows queueing immediately and
+  // a replacement can cancel it. The /review ack is fire-and-forget.
+  const acceptJob = async (job: ReviewJob) => {
+    if (job.triggerCommentId) {
+      const commentId = job.triggerCommentId;
+      tokenProvider
+        .get(job.installationId)
+        .then((token) => createClient(token).reactToIssueComment?.(job.fullName, commentId, "eyes"))
+        .catch((error) => logger.error(`Could not acknowledge /review: ${errorMessage(error)}`));
+    }
+    if (job.headSha) {
+      try {
+        const token = await tokenProvider.get(job.installationId);
+        job.checkRunId = await startQueuedProgress(createClient(token), {
+          fullName: job.fullName,
+          headSha: job.headSha,
+          logger,
+        });
+      } catch (error) {
+        logger.error(`Could not open queued check for ${job.key}: ${errorMessage(error)}`);
+      }
+    }
+  };
 
   const server = createServer(async (request, response) => {
     try {
@@ -93,8 +148,9 @@ export function createAppServer({
         return json(response, 400, { error: "invalid_json" });
       }
 
-      const job = reviewJobFromWebhook(eventName, payload, reviewConfig.author);
+      const job = reviewJobFromWebhook(eventName, payload, reviewConfig.authors);
       if (!job) return json(response, 202, { accepted: false });
+      await acceptJob(job);
       queue.enqueue(job);
       logger.log(`Queued ${job.key} at ${job.headSha?.slice(0, 7) || "unknown"}`);
       return json(response, 202, { accepted: true });

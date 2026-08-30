@@ -281,6 +281,44 @@ export class GitHubClient {
     );
   }
 
+  listCheckRuns(
+    fullName: string,
+    ref: string,
+    name?: string,
+  ): Promise<{ id: number; name?: string; status?: string; started_at?: string }[]> {
+    const query = name ? `?check_name=${encodeURIComponent(name)}` : "";
+    return this.request<{ total_count?: number; check_runs?: unknown[] }>(
+      `/repos/${repoPath(fullName)}/commits/${encodeURIComponent(ref)}/check-runs${query}`,
+    ).then((body) => (Array.isArray(body.check_runs) ? body.check_runs : []) as {
+      id: number;
+      name?: string;
+      status?: string;
+      started_at?: string;
+    }[]);
+  }
+
+  getReviewComment(
+    fullName: string,
+    commentId: number,
+  ): Promise<{
+    id: number;
+    path?: string;
+    line?: number | null;
+    side?: string | null;
+    body?: string;
+    user?: { login?: string };
+    in_reply_to_id?: number;
+  }> {
+    return this.request(`/repos/${repoPath(fullName)}/pulls/comments/${commentId}`);
+  }
+
+  reactToReviewComment(fullName: string, commentId: number, content: string): Promise<unknown> {
+    return this.request(`/repos/${repoPath(fullName)}/pulls/comments/${commentId}/reactions`, {
+      method: "POST",
+      body: { content },
+    });
+  }
+
   reactToIssueComment(fullName: string, commentId: number, content: string): Promise<unknown> {
     return this.request(`/repos/${repoPath(fullName)}/issues/comments/${commentId}/reactions`, {
       method: "POST",

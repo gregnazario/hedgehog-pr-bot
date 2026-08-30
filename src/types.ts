@@ -22,6 +22,8 @@ export interface ReviewConfig {
   author: string;
   authors: string[];
   botLogin: string;
+  /** File that persists /ignore fingerprints; empty disables the memory. */
+  memoryPath?: string;
   maxDiffChars: number;
   models: ModelSpec[];
   fingerprint: string;
@@ -109,6 +111,13 @@ export interface NewCheckRun {
   status: string;
   title?: string;
   summary?: string;
+}
+
+export interface CheckRunRecord {
+  id: number;
+  name?: string;
+  status?: string;
+  started_at?: string;
 }
 
 export interface CheckRunUpdate {
@@ -222,7 +231,7 @@ export interface FinishProgressClient {
   updateCheckRun?(fullName: string, checkRunId: number, payload: CheckRunUpdate): Promise<unknown>;
 }
 
-export interface StartProgressClient {
+export interface StartProgressClient extends FinishProgressClient {
   listIssueReactions?(fullName: string, number: number): Promise<IssueReaction[]>;
   createIssueReaction?(
     fullName: string,
@@ -256,7 +265,24 @@ export interface AckClient {
   reactToIssueComment?(fullName: string, commentId: number, content: string): Promise<unknown>;
 }
 
-export type AppClient = ReviewerClient & ProgressClient & AckClient;
+/** Used by /ignore jobs to mute findings and resolve threads. */
+export interface IgnoreClient {
+  getReviewComment?(
+    fullName: string,
+    commentId: number,
+  ): Promise<{
+    id: number;
+    path?: string;
+    line?: number | null;
+    side?: string | null;
+    body?: string;
+    user?: { login?: string };
+    in_reply_to_id?: number;
+  }>;
+  reactToReviewComment?(fullName: string, commentId: number, content: string): Promise<unknown>;
+}
+
+export type AppClient = ReviewerClient & ProgressClient & AckClient & IgnoreClient;
 
 export interface TokenProvider {
   get(installationId: number): Promise<string>;

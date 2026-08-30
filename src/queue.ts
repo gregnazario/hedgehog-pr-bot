@@ -1,23 +1,33 @@
 export interface QueueOptions<Job> {
   onError?: (error: unknown, job: Job) => void;
+  onReplace?: (previous: Job, next: Job) => void;
 }
 
 export class SerialDedupeQueue<Job extends { key: string }> {
   private readonly handler: (job: Job) => Promise<unknown>;
   private readonly onError: (error: unknown, job: Job) => void;
+  private readonly onReplace?: (previous: Job, next: Job) => void;
   private readonly pending = new Map<string, Job>();
   private readonly order: string[] = [];
   private readonly idleWaiters: Array<() => void> = [];
   private running = false;
 
-  constructor(handler: (job: Job) => Promise<unknown>, { onError }: QueueOptions<Job> = {}) {
+  constructor(
+    handler: (job: Job) => Promise<unknown>,
+    { onError, onReplace }: QueueOptions<Job> = {},
+  ) {
     this.handler = handler;
     this.onError = onError ?? ((error) => console.error(error));
+    this.onReplace = onReplace;
   }
 
   enqueue(job: Job): void {
+    const previous = this.pending.get(job.key);
     if (!this.pending.has(job.key)) this.order.push(job.key);
     this.pending.set(job.key, job);
+    if (previous && this.onReplace) {
+      queueMicrotask(() => this.onReplace?.(previous, job));
+    }
     if (!this.running) queueMicrotask(() => this.drain());
   }
 

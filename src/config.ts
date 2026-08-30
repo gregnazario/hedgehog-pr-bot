@@ -51,6 +51,7 @@ export function loadReviewConfig(env: EnvSource = process.env): ReviewConfig {
     author: authors[0] ?? "gregnazario",
     authors,
     botLogin: normalizeBotLogin(env.BOT_LOGIN || DEFAULT_BOT_LOGIN),
+    memoryPath: env.REVIEW_MEMORY_PATH || "",
     maxDiffChars: positiveInteger(env.MAX_DIFF_CHARS, 4_000_000),
     models,
     fingerprint: createHash("sha256")
