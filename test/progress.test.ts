@@ -136,7 +136,7 @@ test("prepareAcceptedJob skips already-reviewed heads unless force", async () =>
 
 test("startQueuedProgress opens a queued check", async () => {
   const created: NewCheckRun[] = [];
-  const client = {
+  const client: StartProgressClient = {
     createCheckRun: async (_repo, payload) => {
       created.push(payload);
       return { id: 31 };
@@ -150,7 +150,7 @@ test("startQueuedProgress opens a queued check", async () => {
 test("startProgress adopts a queued check instead of creating another", async () => {
   const created: NewCheckRun[] = [];
   const updates: CheckRunUpdate[] = [];
-  const client = {
+  const client: StartProgressClient = {
     listIssueReactions: async () => [],
     createIssueReaction: async () => ({ id: 3 }),
     createCheckRun: async (_repo, payload) => {
@@ -174,7 +174,7 @@ test("startProgress adopts a queued check instead of creating another", async ()
 
 test("startProgress falls back to creating when adoption fails", async () => {
   const created: NewCheckRun[] = [];
-  const client = {
+  const client: StartProgressClient = {
     listIssueReactions: async () => [],
     createIssueReaction: async () => ({ id: 3 }),
     createCheckRun: async (_repo, payload) => {
@@ -203,6 +203,7 @@ test("abandonQueuedProgress completes inherited checks as skipped", async () => 
     { fullName: "gregnazario/example", checkRunId: 5, summary: "The skip-review label is set." },
   );
   assert.equal(updates[0].conclusion, "skipped");
+  assert.ok(updates[0].summary);
   assert.match(updates[0].summary, /skip-review/);
 });
 
@@ -213,13 +214,14 @@ test("cancelQueuedProgress marks replaced checks cancelled", async () => {
     { fullName: "gregnazario/example", checkRunId: 5 },
   );
   assert.equal(updates[0].conclusion, "cancelled");
+  assert.ok(updates[0].title);
   assert.match(updates[0].title, /Superseded/);
 });
 
 test("sweepStaleQueuedChecks completes only old queued checks", async () => {
   const updates: CheckRunUpdate[] = [];
   const now = Date.parse("2026-08-29T12:00:00Z");
-  const client = {
+  const client: Parameters<typeof sweepStaleQueuedChecks>[0] = {
     listCheckRuns: async () => [
       { id: 1, name: "Pi review", status: "queued", started_at: "2026-08-29T01:00:00Z" },
       { id: 2, name: "Pi review", status: "queued", started_at: "2026-08-29T11:50:00Z" },
@@ -230,5 +232,6 @@ test("sweepStaleQueuedChecks completes only old queued checks", async () => {
   const swept = await sweepStaleQueuedChecks(client, { fullName: "r/e", headSha: "abc", now });
   assert.equal(swept, 1);
   assert.equal(updates.length, 1);
+  assert.ok(updates[0].title);
   assert.match(updates[0].title, /Stale queued check/);
 });
