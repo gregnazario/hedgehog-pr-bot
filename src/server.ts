@@ -6,6 +6,9 @@ import { loadPrivateKey, loadReviewConfig, positiveInteger } from "./config.ts";
 import { errorMessage } from "./errors.ts";
 import { GitHubClient, InstallationTokenProvider } from "./github.ts";
 import { applyIgnoreJob } from "./ignore.ts";
+import { makeJsonLogger } from "./logging.ts";
+import { loadIgnoreMemory } from "./memory.ts";
+import { createMetrics, type Metrics } from "./metrics.ts";
 import { cancelQueuedProgress, prepareAcceptedJob, startQueuedProgress } from "./progress.ts";
 import { SerialDedupeQueue } from "./queue.ts";
 import { reviewPullRequest } from "./reviewer.ts";
@@ -26,6 +29,7 @@ export interface AppServerOptions {
   tokenProvider: TokenProvider;
   reviewConfig: ReviewConfig;
   logger?: Logger;
+  metrics?: Metrics;
   createClient?: (token: string) => AppClient;
 }
 
@@ -34,6 +38,7 @@ export function createAppServer({
   tokenProvider,
   reviewConfig,
   logger = console,
+  metrics = createMetrics(),
   createClient = (token) => new GitHubClient(token, globalThis.fetch, reviewConfig.botLogin),
 }: AppServerOptions) {
   if (!webhookSecret) throw new Error("GITHUB_WEBHOOK_SECRET is required");
@@ -43,6 +48,7 @@ export function createAppServer({
       const token = await tokenProvider.get(job.installationId);
       const client = createClient(token);
       if (job.kind === "ignore") {
+        metrics.inc("ignore_jobs_total");
         await applyIgnoreJob(
           client,
           job,
@@ -62,8 +68,12 @@ export function createAppServer({
         },
         logger,
       );
-      if (!prepared) return;
-      await reviewPullRequest({
+      if (!prepared) {
+        metrics.inc("job_results_total", { result: "skipped" });
+        return;
+      }
+      const ignoredFingerprints = await loadIgnoreMemory(reviewConfig.memoryPath ?? "");
+      const result = await reviewPullRequest({
         client,
         fullName: prepared.fullName,
         number: prepared.number,
@@ -71,8 +81,10 @@ export function createAppServer({
         force: Boolean(job.force),
         checkRunId: prepared.checkRunId,
         eyesReactionId: prepared.eyesReactionId,
+        ignoredFingerprints,
         logger,
       });
+      metrics.inc("job_results_total", { result: result.status });
     },
     {
       onError: (error, job) => logger.error(`Review failed for ${job.key}: ${errorMessage(error)}`),
@@ -125,6 +137,11 @@ export function createAppServer({
       if (request.method === "GET" && request.url === "/healthz") {
         return json(response, 200, { ok: true, queued: queue.size });
       }
+      if (request.method === "GET" && request.url === "/metrics") {
+        response.writeHead(200, { "Content-Type": "text/plain; version=0.0.4; charset=utf-8" });
+        response.end(`${metrics.render()}# TYPE queue_depth gauge\nqueue_depth ${queue.size}\n`);
+        return;
+      }
       if (request.method !== "POST" || request.url !== "/github/webhook") {
         return json(response, 404, { error: "not_found" });
       }
@@ -144,8 +161,13 @@ export function createAppServer({
         return json(response, 400, { error: "invalid_json" });
       }
 
+      metrics.inc("webhook_events_total", { event: eventName ?? "unknown" });
       const job = reviewJobFromWebhook(eventName, payload, reviewConfig.authors);
-      if (!job) return json(response, 202, { accepted: false });
+      if (!job) {
+        metrics.inc("webhook_rejected_total");
+        return json(response, 202, { accepted: false });
+      }
+      metrics.inc("webhook_accepted_total");
       await acceptJob(job);
       queue.enqueue(job);
       logger.log(`Queued ${job.key} at ${job.headSha?.slice(0, 7) || "unknown"}`);
@@ -161,7 +183,10 @@ export function createAppServer({
   return { server, queue };
 }
 
-export async function startFromEnvironment(env: EnvSource = process.env, logger: Logger = console) {
+export async function startFromEnvironment(
+  env: EnvSource = process.env,
+  logger: Logger = env.LOG_FORMAT === "json" ? makeJsonLogger() : console,
+) {
   const reviewConfig = loadReviewConfig(env);
   const tokenProvider = new InstallationTokenProvider({
     clientId: env.APP_CLIENT_ID || env.APP_ID,
