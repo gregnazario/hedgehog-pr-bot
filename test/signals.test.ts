@@ -233,7 +233,7 @@ test("check outcome never fails on findings", () => {
   assert.deepEqual(checkOutcome({ failed: true, errorMessage: "Pi exited" }), {
     conclusion: "failure",
     title: "❌ Review failed",
-    summary: "```\nPi exited\n```",
+    summary: "```\nPi exited\n```\n\nComment `/review` on the PR to re-run.",
   });
   assert.equal(checkOutcome({ severities: ["High", "Low"] }).conclusion, "action_required");
   assert.match(checkOutcome({ severities: ["High", "Low"] }).title, /⚠️ 1 high\/critical/);
@@ -242,7 +242,7 @@ test("check outcome never fails on findings", () => {
   assert.deepEqual(checkOutcome({ severities: [] }), {
     conclusion: "success",
     title: "✅ No new findings",
-    summary: "No new findings.",
+    summary: "No new findings.\n\nComment `/review` on the PR to re-run.",
   });
 });
 
@@ -252,9 +252,11 @@ test("failure check summaries strip fences, ANSI, and extra length", () => {
     failed: true,
     errorMessage: `\u001b[31msecret\u001b[0m\n\`\`\`\n${"x".repeat(600)}`,
   });
-  assert.equal(outcome.summary.startsWith("```\n"), true);
-  assert.equal(outcome.summary.endsWith("\n```"), true);
-  assert.doesNotMatch(outcome.summary.slice(4, -4), /```/);
-  assert.equal(outcome.summary.includes("secret"), true);
-  assert.equal(outcome.summary.length <= 500 + "```\n\n```".length, true);
+  const fenced = outcome.summary.split("\n\nComment `/review`")[0];
+  assert.equal(fenced.startsWith("```\n"), true);
+  assert.equal(fenced.endsWith("\n```"), true);
+  assert.doesNotMatch(fenced.slice(4, -4), /```/);
+  assert.equal(fenced.includes("secret"), true);
+  assert.equal(fenced.length <= 500 + "```\n\n```".length, true);
+  assert.match(outcome.summary, /Comment `\/review` on the PR to re-run\.$/);
 });

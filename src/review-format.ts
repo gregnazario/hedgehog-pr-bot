@@ -116,6 +116,7 @@ export function buildReviewBody({
   overflow = [],
   headSha,
   modelLabels,
+  diffTruncated = false,
 }: {
   marker: string;
   summary?: string;
@@ -125,6 +126,7 @@ export function buildReviewBody({
   overflow?: readonly SummaryFinding[];
   headSha?: string;
   modelLabels?: string;
+  diffTruncated?: boolean;
   /** Accepted for call-site convenience; the count is not rendered. */
   commentCount?: number;
 }): string {
@@ -144,6 +146,11 @@ export function buildReviewBody({
   const parts = ["## Pi code review", "", overview];
   const tally = clean ? "" : tallyLine(severities);
   if (tally) parts.push("", tally);
+  if (diffTruncated)
+    parts.push(
+      "",
+      "_The diff exceeded the configured size limit and was truncated; parts of this change were not reviewed._",
+    );
   appendFindingList(parts, overflow, "### Additional findings (GitHub limit 100)");
   appendFindingList(parts, unmapped, "### Could not attach to the diff");
 

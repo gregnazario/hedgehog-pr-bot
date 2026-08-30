@@ -207,3 +207,16 @@ test("includes unmapped notes in the review summary", () => {
   assert.match(body, /Additional findings \(GitHub limit 100\)/);
   assert.match(body, /Later note/);
 });
+
+test("flags truncated diffs in the review body", () => {
+  const body = buildReviewBody({
+    marker: "<!-- greg-pr-bot-review head:123 config:abc -->",
+    summary: "Partial look.",
+    severities: [],
+    unmapped: [],
+    diffTruncated: true,
+    headSha: "1234567dead",
+    modelLabels: "zai/glm-5.3:high",
+  });
+  assert.match(body, /exceeded the configured size limit and was truncated/);
+});

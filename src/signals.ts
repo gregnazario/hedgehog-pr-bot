@@ -184,6 +184,12 @@ export function tallyLine(severities: readonly unknown[]): string {
   return parts.join(" · ");
 }
 
+const RERUN_HINT = "Comment `/review` on the PR to re-run.";
+
+export function withRerunHint(summary: string): string {
+  return `${summary}\n\n${RERUN_HINT}`;
+}
+
 export function checkOutcome({
   failed = false,
   errorMessage = "",
@@ -198,7 +204,7 @@ export function checkOutcome({
     return {
       conclusion: "failure",
       title: "❌ Review failed",
-      summary: detail ? `\`\`\`\n${detail}\n\`\`\`` : "Review failed.",
+      summary: withRerunHint(detail ? `\`\`\`\n${detail}\n\`\`\`` : "Review failed."),
     };
   }
   const high = severities.filter(
@@ -209,20 +215,20 @@ export function checkOutcome({
     return {
       conclusion: "action_required",
       title: `⚠️ ${high} high/critical`,
-      summary: tallyLine(severities) || "Critical or High findings remain.",
+      summary: withRerunHint(tallyLine(severities) || "Critical or High findings remain."),
     };
   }
   if (rest) {
     return {
       conclusion: "success",
       title: `ℹ️ ${rest} comments`,
-      summary: tallyLine(severities),
+      summary: withRerunHint(tallyLine(severities)),
     };
   }
   return {
     conclusion: "success",
     title: "✅ No new findings",
-    summary: "No new findings.",
+    summary: withRerunHint("No new findings."),
   };
 }
 

@@ -11,7 +11,9 @@ import {
   isHedgehogLogin,
   reviewEventFromSeverities,
   reviewHasCurrentMarker,
+  severityRank,
   STILL_APPLIES_REPLY,
+  withRerunHint,
 } from "./signals.ts";
 import type {
   CheckOutcome,
@@ -164,12 +166,14 @@ async function runReview({
       : parsedReviews
           .map(({ modelSpec, parsed }) => `### ${modelSpec.label}\n\n${parsed.summary}`)
           .join("\n\n");
+  const diffTruncated = diff.length > config.maxDiffChars;
   const bodyFor = (failedComments: InlineComment[] = []) =>
     buildReviewBody({
       marker,
       summary,
       clean,
       severities,
+      diffTruncated,
       unmapped: [
         ...unmapped,
         ...failedComments.map((comment) => ({
@@ -339,8 +343,28 @@ function mergeParsedReviews(
   addressedCommentIds: number[];
   stillApplies: StillApplies[];
 } {
+  // Findings from different models that land on the same exact anchor describe
+  // one issue: keep the most severe body and join the model labels so the
+  // comment shows how many models agreed.
+  const groups = new Map<string, Finding[]>();
+  for (const { parsed } of parsedReviews) {
+    for (const finding of parsed.findings) {
+      const key = `${finding.path}\0${finding.side}\0${finding.line}`;
+      const group = groups.get(key);
+      if (group) group.push(finding);
+      else groups.set(key, [finding]);
+    }
+  }
+  const findings = [...groups.values()].map((group) => {
+    if (group.length === 1) return group[0];
+    const ranked = [...group].sort(
+      (left, right) => severityRank[left.severity] - severityRank[right.severity],
+    );
+    const labels = [...new Set(group.map((item) => item.modelLabel).filter(Boolean))];
+    return { ...ranked[0], modelLabel: labels.join(", ") };
+  });
   return {
-    findings: parsedReviews.flatMap(({ parsed }) => parsed.findings),
+    findings,
     addressedCommentIds: parsedReviews.flatMap(({ parsed }) => parsed.addressedCommentIds ?? []),
     stillApplies: parsedReviews.flatMap(({ parsed }) => parsed.stillApplies ?? []),
   };
@@ -503,7 +527,7 @@ function outcomeFor(result: ReviewResult): CheckOutcome {
     return {
       conclusion: "skipped",
       title: "Already reviewed",
-      summary: "This head was already reviewed.",
+      summary: withRerunHint("This head was already reviewed."),
     };
   }
   return { conclusion: "skipped", title: "Skipped", summary: result.status };

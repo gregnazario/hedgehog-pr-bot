@@ -563,3 +563,63 @@ test("removes GitHub App and webhook secrets from Pi's environment", () => {
   });
   assert.deepEqual(env, { PATH: "/bin", ZAI_API_KEY: "model-key" });
 });
+
+test("deduplicates multi-model findings that share an anchor", async () => {
+  let posted;
+  const twoModelConfig = {
+    author: "gregnazario",
+    authors: ["gregnazario"],
+    botLogin: "hedgehog-pr-bot",
+    maxDiffChars: 10_000,
+    fingerprint: "abc123",
+    models: [
+      { provider: "zai", model: "glm-5.3", thinking: "high", label: "zai/glm-5.3:high" },
+      { provider: "anthropic", model: "claude", thinking: "high", label: "anthropic/claude:high" },
+    ],
+  };
+  const client = baseClient({
+    createPullRequestReview: async (_repo, _number, payload) => {
+      posted = payload;
+    },
+  });
+  const result = await reviewPullRequest({
+    client,
+    fullName: "gregnazario/example",
+    number: 7,
+    config: twoModelConfig,
+    runModel: async (_bundle, modelSpec) =>
+      modelSpec.provider === "zai"
+        ? JSON.stringify({
+            summary: "Zai pass.",
+            findings: [{ severity: "Low", path: "src/app.mjs", line: 4, side: "RIGHT", body: "Check VERSION." }],
+          })
+        : JSON.stringify({
+            summary: "Claude pass.",
+            findings: [{ severity: "Critical", path: "src/app.mjs", line: 4, side: "RIGHT", body: "VERSION leaks a secret." }],
+          }),
+    logger: { log() {}, error() {} },
+  });
+  assert.ok(result.status === "reviewed");
+  assert.equal(posted.comments.length, 1);
+  assert.match(posted.comments[0].body, /zai\/glm-5\.3:high, anthropic\/claude:high/);
+  assert.match(posted.comments[0].body, /\*\*Critical:\*\*/);
+  assert.deepEqual(result.severities, ["Critical"]);
+});
+
+test("notes truncated diffs in the review body", async () => {
+  let posted;
+  const client = baseClient({
+    createPullRequestReview: async (_repo, _number, payload) => {
+      posted = payload;
+    },
+  });
+  await reviewPullRequest({
+    client,
+    fullName: "gregnazario/example",
+    number: 7,
+    config: { ...config, maxDiffChars: 10 },
+    runModel: async () => jsonReview(),
+    logger: { log() {}, error() {} },
+  });
+  assert.match(posted.body, /diff exceeded the configured size limit/);
+});
