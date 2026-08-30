@@ -64,7 +64,7 @@ test("enqueues /review from the author with force", () => {
     action: "created",
     installation: { id: 123 },
     repository: { full_name: "gregnazario/example" },
-    comment: { body: "/review now", user: { login: "gregnazario" } },
+    comment: { id: 314, body: "/review now", user: { login: "gregnazario" } },
     issue: {
       number: 42,
       draft: false,
@@ -79,6 +79,7 @@ test("enqueues /review from the author with force", () => {
     number: 42,
     installationId: 123,
     force: true,
+    triggerCommentId: 314,
   });
 });
 

@@ -5,6 +5,7 @@ import type { CheckRunUpdate, ReviewerClient } from "../src/types.ts";
 
 const config = {
   author: "gregnazario",
+  authors: ["gregnazario"],
   botLogin: "hedgehog-pr-bot",
   maxDiffChars: 10_000,
   fingerprint: "abc123",

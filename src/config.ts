@@ -43,8 +43,13 @@ export function parseModelSpecs(value: string): ModelSpec[] {
 
 export function loadReviewConfig(env: EnvSource = process.env): ReviewConfig {
   const models = parseModelSpecs(env.PI_MODELS || "zai/glm-5.3:high");
+  const authors = (env.PR_AUTHORS || env.PR_AUTHOR || "gregnazario")
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean);
   return {
-    author: (env.PR_AUTHOR || "gregnazario").toLowerCase(),
+    author: authors[0] ?? "gregnazario",
+    authors,
     botLogin: normalizeBotLogin(env.BOT_LOGIN || DEFAULT_BOT_LOGIN),
     maxDiffChars: positiveInteger(env.MAX_DIFF_CHARS, 4_000_000),
     models,

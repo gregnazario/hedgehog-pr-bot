@@ -25,10 +25,27 @@ export function hasSkipReviewLabel(labels?: readonly LabelLike[] | null): boolea
 }
 
 export function isReviewCommand(body: unknown): boolean {
-  const token = String(body ?? "")
+  const token = firstToken(body);
+  return token === "/review";
+}
+
+export function isIgnoreCommand(body: unknown): boolean {
+  return firstToken(body) === "/ignore";
+}
+
+/** Accepts one author or a list; logins are compared case-insensitively. */
+export function isReviewedAuthor(login: unknown, authors: string | readonly string[]): boolean {
+  const name = String(login ?? "").toLowerCase();
+  const list = (typeof authors === "string" ? [authors] : authors).map((entry) =>
+    entry.toLowerCase(),
+  );
+  return name !== "" && list.includes(name);
+}
+
+function firstToken(body: unknown): string {
+  return String(body ?? "")
     .trim()
     .split(/\s+/)[0];
-  return token === "/review";
 }
 
 export const DEFAULT_BOT_LOGIN = "hedgehog-pr-bot";

@@ -12,6 +12,7 @@ test("serves health checks and authenticates webhook pings", async (t) => {
     tokenProvider: { get: async () => "unused" },
     reviewConfig: {
       author: "gregnazario",
+      authors: ["gregnazario"],
       botLogin: "hedgehog-pr-bot",
       fingerprint: "abc123",
       models: [],
@@ -79,6 +80,7 @@ test("accepted pull_request webhook returns 202 before GitHub calls", async (t) 
     },
     reviewConfig: {
       author: "gregnazario",
+      authors: ["gregnazario"],
       botLogin: "hedgehog-pr-bot",
       fingerprint: "abc123",
       models: [],
@@ -137,6 +139,7 @@ test("does not start progress when this head is already reviewed", async (t) => 
     tokenProvider: { get: async () => "token" },
     reviewConfig: {
       author: "gregnazario",
+      authors: ["gregnazario"],
       botLogin: "hedgehog-pr-bot",
       fingerprint: "abc123",
       models: [],
@@ -195,6 +198,7 @@ test("does not start progress for skip-review PRs", async (t) => {
     tokenProvider: { get: async () => "token" },
     reviewConfig: {
       author: "gregnazario",
+      authors: ["gregnazario"],
       botLogin: "hedgehog-pr-bot",
       fingerprint: "abc123",
       models: [],

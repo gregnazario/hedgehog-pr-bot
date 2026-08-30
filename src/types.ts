@@ -20,6 +20,7 @@ export interface ModelSpec {
 
 export interface ReviewConfig {
   author: string;
+  authors: string[];
   botLogin: string;
   maxDiffChars: number;
   models: ModelSpec[];
@@ -36,6 +37,14 @@ export interface ReviewJob extends PullRequestRef {
   installationId: number;
   force: boolean;
   headSha?: string;
+  /** Set for /review comments so the trigger can be acknowledged. */
+  triggerCommentId?: number;
+  /** Check run created at enqueue time; adopted by the worker when it starts. */
+  checkRunId?: number;
+  /** "ignore" jobs mute a finding instead of reviewing; default is "review". */
+  kind?: "review" | "ignore";
+  /** For "ignore" jobs: the hedgehog comment the /ignore reply targets. */
+  replyToCommentId?: number;
 }
 
 export interface GitHubUser {
@@ -232,7 +241,21 @@ export interface ProgressClient extends StartProgressClient {
   listPullRequestReviews?(fullName: string, number: number): Promise<PullRequestReview[]>;
 }
 
+export interface ReviewComment {
+  id: number;
+  path?: string;
+  line?: number | null;
+  side?: string | null;
+  body?: string;
+  user?: GitHubUser;
+  in_reply_to_id?: number;
+}
+
 export type AppClient = ReviewerClient & ProgressClient;
+
+export interface AckClient {
+  reactToIssueComment?(fullName: string, commentId: number, content: string): Promise<unknown>;
+}
 
 export interface TokenProvider {
   get(installationId: number): Promise<string>;
