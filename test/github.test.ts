@@ -220,6 +220,23 @@ test("lists unresolved hedgehog threads and ignores other bots", async () => {
                     },
                   },
                   {
+                    id: "T5",
+                    isResolved: false,
+                    comments: {
+                      nodes: [
+                        {
+                          databaseId: 505,
+                          body: "**Low:** deleted line note",
+                          path: "e.mjs",
+                          line: null,
+                          originalLine: 7,
+                          author: { login: "hedgehog-pr-bot[bot]" },
+                        },
+                      ],
+                    },
+                    recentComments: { nodes: [] },
+                  },
+                  {
                     id: "T2",
                     isResolved: false,
                     comments: {
@@ -301,6 +318,16 @@ test("lists unresolved hedgehog threads and ignores other bots", async () => {
       side: "RIGHT",
       severity: "High",
       body: "**High:** leak",
+      alreadyReplied: false,
+    },
+    {
+      commentId: 505,
+      threadId: "T5",
+      path: "e.mjs",
+      line: 7,
+      side: "LEFT",
+      severity: "Low",
+      body: "**Low:** deleted line note",
       alreadyReplied: false,
     },
     {

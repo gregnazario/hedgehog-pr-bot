@@ -440,7 +440,9 @@ export class GitHubClient {
           threadId: node.id,
           path: comment.path,
           line: comment.line ?? comment.originalLine ?? 0,
-          side: comment.side === "LEFT" ? "LEFT" : "RIGHT",
+          // GitHub removed `side` from the GraphQL schema; comments on the
+          // current file have a line number, deleted lines only originalLine.
+          side: comment.line != null ? "RIGHT" : "LEFT",
           severity: parseSeverityPrefix(comment.body),
           body: comment.body,
           alreadyReplied: hasStillAppliesReply(node.recentComments?.nodes, this.botLogin),
@@ -494,7 +496,6 @@ interface ThreadCommentNode {
   path: string;
   line?: number | null;
   originalLine?: number | null;
-  side?: string | null;
   author?: { login?: string };
 }
 
@@ -550,7 +551,6 @@ query HedgehogReviewThreads($owner: String!, $name: String!, $number: Int!, $cur
               path
               line
               originalLine
-              side
               author { login }
             }
           }
