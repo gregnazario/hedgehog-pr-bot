@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { findingFingerprint } from "../src/memory.ts";
 import { buildPiEnvironment, buildReviewBundle, reviewPullRequest } from "../src/reviewer.ts";
 import type { CheckRunUpdate, ReviewerClient } from "../src/types.ts";
 
 const config = {
   author: "gregnazario",
+  authors: ["gregnazario"],
   botLogin: "hedgehog-pr-bot",
   maxDiffChars: 10_000,
   fingerprint: "abc123",
@@ -561,4 +563,138 @@ test("removes GitHub App and webhook secrets from Pi's environment", () => {
     GITHUB_WEBHOOK_SECRET: "webhook-secret",
   });
   assert.deepEqual(env, { PATH: "/bin", ZAI_API_KEY: "model-key" });
+});
+
+test("deduplicates multi-model findings that share an anchor", async () => {
+  let posted: any;
+  const twoModelConfig = {
+    author: "gregnazario",
+    authors: ["gregnazario"],
+    botLogin: "hedgehog-pr-bot",
+    maxDiffChars: 10_000,
+    fingerprint: "abc123",
+    models: [
+      { provider: "zai", model: "glm-5.3", thinking: "high", label: "zai/glm-5.3:high" },
+      { provider: "anthropic", model: "claude", thinking: "high", label: "anthropic/claude:high" },
+    ],
+  };
+  const client = baseClient({
+    createPullRequestReview: async (_repo, _number, payload) => {
+      posted = payload;
+    },
+  });
+  const result = await reviewPullRequest({
+    client,
+    fullName: "gregnazario/example",
+    number: 7,
+    config: twoModelConfig,
+    runModel: async (_bundle, modelSpec) =>
+      modelSpec.provider === "zai"
+        ? JSON.stringify({
+            summary: "Zai pass.",
+            findings: [
+              {
+                severity: "Low",
+                path: "src/app.mjs",
+                line: 4,
+                side: "RIGHT",
+                body: "Check VERSION.",
+              },
+            ],
+          })
+        : JSON.stringify({
+            summary: "Claude pass.",
+            findings: [
+              {
+                severity: "Critical",
+                path: "src/app.mjs",
+                line: 4,
+                side: "RIGHT",
+                body: "VERSION leaks a secret.",
+              },
+            ],
+          }),
+    logger: { log() {}, error() {} },
+  });
+  assert.ok(result.status === "reviewed");
+  assert.equal(posted.comments.length, 1);
+  assert.match(posted.comments[0].body, /zai\/glm-5\.3:high, anthropic\/claude:high/);
+  assert.match(posted.comments[0].body, /\*\*Critical:\*\*/);
+  assert.deepEqual(result.severities, ["Critical"]);
+});
+
+test("notes truncated diffs in the review body", async () => {
+  let posted: any;
+  const client = baseClient({
+    createPullRequestReview: async (_repo, _number, payload) => {
+      posted = payload;
+    },
+  });
+  await reviewPullRequest({
+    client,
+    fullName: "gregnazario/example",
+    number: 7,
+    config: { ...config, maxDiffChars: 10 },
+    runModel: async () => jsonReview(),
+    logger: { log() {}, error() {} },
+  });
+  assert.match(posted.body, /diff exceeded the configured size limit/);
+});
+
+test("reports per-model progress on the review check", async () => {
+  const updates: any[] = [];
+  const twoModelConfig = {
+    author: "gregnazario",
+    authors: ["gregnazario"],
+    botLogin: "hedgehog-pr-bot",
+    maxDiffChars: 10_000,
+    fingerprint: "abc123",
+    models: [
+      { provider: "zai", model: "glm-5.3", thinking: "high", label: "zai/glm-5.3:high" },
+      { provider: "zai", model: "glm-4.7", thinking: "high", label: "zai/glm-4.7:high" },
+    ],
+  };
+  const client = baseClient({
+    createPullRequestReview: async () => {},
+    updateCheckRun: async (_repo, _id, payload) => updates.push(payload),
+  });
+  await reviewPullRequest({
+    client,
+    fullName: "gregnazario/example",
+    number: 7,
+    config: twoModelConfig,
+    checkRunId: 55,
+    runModel: async () => jsonReview(),
+    logger: { log() {}, error() {} },
+  });
+  const progress = updates.filter((update) => update.status === "in_progress");
+  assert.equal(progress.length, 2);
+  assert.match(progress[0].summary, /1\/2 models done/);
+  assert.match(progress[1].summary, /2\/2 models done/);
+  assert.equal(progress[0].title, "👀 Reviewing…");
+  assert.equal(updates[updates.length - 1].status, "completed");
+});
+
+test("ignored fingerprints drop matching findings", async () => {
+  let posted: any;
+  const client = baseClient({
+    createPullRequestReview: async (_repo, _number, payload) => {
+      posted = payload;
+    },
+  });
+  const result = await reviewPullRequest({
+    client,
+    fullName: "gregnazario/example",
+    number: 7,
+    config,
+    ignoredFingerprints: new Set([
+      findingFingerprint({ path: "src/app.mjs", body: "Is VERSION used?" }),
+    ]),
+    runModel: async () => jsonReview(),
+    logger: { log() {}, error() {} },
+  });
+  assert.ok(result.status === "reviewed");
+  assert.equal(posted.event, "APPROVE");
+  assert.equal(posted.comments, undefined);
+  assert.match(posted.body, /No new findings/);
 });

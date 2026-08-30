@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { finishProgress, prepareAcceptedJob, startProgress } from "../src/progress.ts";
+import {
+  abandonQueuedProgress,
+  cancelQueuedProgress,
+  finishProgress,
+  prepareAcceptedJob,
+  startProgress,
+  startQueuedProgress,
+  sweepStaleQueuedChecks,
+} from "../src/progress.ts";
 import type {
   CheckRunUpdate,
   NewCheckRun,
@@ -124,4 +132,106 @@ test("prepareAcceptedJob skips already-reviewed heads unless force", async () =>
   assert.ok(prepared);
   assert.equal(prepared.checkRunId, 1);
   assert.equal(created, true);
+});
+
+test("startQueuedProgress opens a queued check", async () => {
+  const created: NewCheckRun[] = [];
+  const client: StartProgressClient = {
+    createCheckRun: async (_repo, payload) => {
+      created.push(payload);
+      return { id: 31 };
+    },
+  };
+  const id = await startQueuedProgress(client, { fullName: "gregnazario/example", headSha: "abc" });
+  assert.equal(id, 31);
+  assert.equal(created[0].status, "queued");
+});
+
+test("startProgress adopts a queued check instead of creating another", async () => {
+  const created: NewCheckRun[] = [];
+  const updates: CheckRunUpdate[] = [];
+  const client: StartProgressClient = {
+    listIssueReactions: async () => [],
+    createIssueReaction: async () => ({ id: 3 }),
+    createCheckRun: async (_repo, payload) => {
+      created.push(payload);
+      return { id: 12 };
+    },
+    updateCheckRun: async (_repo, _id, payload) => {
+      updates.push(payload);
+    },
+  };
+  const progress = await startProgress(client, {
+    fullName: "gregnazario/example",
+    number: 7,
+    headSha: "abc",
+    adoptCheckRunId: 12,
+  });
+  assert.deepEqual(progress, { eyesReactionId: 3, checkRunId: 12 });
+  assert.equal(created.length, 0);
+  assert.equal(updates[0].status, "in_progress");
+});
+
+test("startProgress falls back to creating when adoption fails", async () => {
+  const created: NewCheckRun[] = [];
+  const client: StartProgressClient = {
+    listIssueReactions: async () => [],
+    createIssueReaction: async () => ({ id: 3 }),
+    createCheckRun: async (_repo, payload) => {
+      created.push(payload);
+      return { id: 77 };
+    },
+    updateCheckRun: async () => {
+      throw new Error("gone");
+    },
+  };
+  const progress = await startProgress(client, {
+    fullName: "gregnazario/example",
+    number: 7,
+    headSha: "abc",
+    adoptCheckRunId: 12,
+    logger: { log() {}, error() {} },
+  });
+  assert.equal(progress.checkRunId, 77);
+  assert.equal(created.length, 1);
+});
+
+test("abandonQueuedProgress completes inherited checks as skipped", async () => {
+  const updates: CheckRunUpdate[] = [];
+  await abandonQueuedProgress(
+    { updateCheckRun: async (_repo, _id, payload) => updates.push(payload) },
+    { fullName: "gregnazario/example", checkRunId: 5, summary: "The skip-review label is set." },
+  );
+  assert.equal(updates[0].conclusion, "skipped");
+  assert.ok(updates[0].summary);
+  assert.match(updates[0].summary, /skip-review/);
+});
+
+test("cancelQueuedProgress marks replaced checks cancelled", async () => {
+  const updates: CheckRunUpdate[] = [];
+  await cancelQueuedProgress(
+    { updateCheckRun: async (_repo, _id, payload) => updates.push(payload) },
+    { fullName: "gregnazario/example", checkRunId: 5 },
+  );
+  assert.equal(updates[0].conclusion, "cancelled");
+  assert.ok(updates[0].title);
+  assert.match(updates[0].title, /Superseded/);
+});
+
+test("sweepStaleQueuedChecks completes only old queued checks", async () => {
+  const updates: CheckRunUpdate[] = [];
+  const now = Date.parse("2026-08-29T12:00:00Z");
+  const client: Parameters<typeof sweepStaleQueuedChecks>[0] = {
+    listCheckRuns: async () => [
+      { id: 1, name: "Pi review", status: "queued", started_at: "2026-08-29T01:00:00Z" },
+      { id: 2, name: "Pi review", status: "queued", started_at: "2026-08-29T11:50:00Z" },
+      { id: 3, name: "Pi review", status: "completed", started_at: "2026-08-28T01:00:00Z" },
+    ],
+    updateCheckRun: async (_repo, _id, payload) => updates.push(payload),
+  };
+  const swept = await sweepStaleQueuedChecks(client, { fullName: "r/e", headSha: "abc", now });
+  assert.equal(swept, 1);
+  assert.equal(updates.length, 1);
+  assert.ok(updates[0].title);
+  assert.match(updates[0].title, /Stale queued check/);
 });

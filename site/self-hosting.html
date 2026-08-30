@@ -56,11 +56,18 @@
       </ul>
 
       <h2>1. Create your GitHub App</h2>
+      <p>
+        The shortcut: open
+        <a href="https://github.com/settings/apps/new?manifest=IyBQcmUtZmlsbHMgdGhlIEdpdEh1YiBBcHAgY3JlYXRpb24gZm9ybSBmb3Igc2VsZi1ob3N0ZXJzOgojICAgaHR0cHM6Ly9naXRodWIuY29tL3NldHRpbmdzL2FwcHMvbmV3P21hbmlmZXN0PTxiYXNlNjQgb2YgdGhpcyBmaWxlPgojIEVkaXQgdGhlIHdlYmhvb2sgVVJMIHRvIHlvdXIgcHVibGljIGhvc3QgYmVmb3JlIHN1Ym1pdHRpbmcsIHRoZW4gc2V0IHRoZSBzYW1lCiMgdmFsdWUgYXMgR0lUSFVCX1dFQkhPT0tfU0VDUkVULiBSZWdlbmVyYXRlIHRoZSBsaW5rIHdpdGg6CiMgICBiYXNlNjQgPCAuZ2l0aHViL2FwcC1tYW5pZmVzdC55bWwgfCB0ciAtZCAnXG4nCm5hbWU6IGhlZGdlaG9nLXByLWJvdAp1cmw6IGh0dHBzOi8vZ3JlZ25hemFyaW8uZ2l0aHViLmlvL2hlZGdlaG9nLXByLWJvdC8KaG9va19hdHRyaWJ1dGVzOgogIHVybDogaHR0cHM6Ly95b3VyLWhvc3QvZ2l0aHViL3dlYmhvb2sKcHVibGljOiB0cnVlCnBlcm1pc3Npb25zOgogIGNvbnRlbnRzOiByZWFkCiAgaXNzdWVzOiB3cml0ZQogIHB1bGxfcmVxdWVzdHM6IHdyaXRlCiAgY2hlY2tzOiB3cml0ZQpldmVudHM6CiAgLSBwdWxsX3JlcXVlc3QKICAtIGlzc3VlX2NvbW1lbnQKICAtIHB1bGxfcmVxdWVzdF9yZXZpZXdfY29tbWVudAo=">the pre-filled App creation form</a> (from
+        <code>.github/app-manifest.yml</code> in the repository) — permissions, events, and
+        the webhook shape are already set. Edit the webhook URL to your host and pick a
+        name; the bot account slug becomes <code>BOT_LOGIN</code>.
+      </p>
       <ol class="steps">
         <li>
-          Go to <em>Settings → Developer settings → GitHub Apps → New GitHub App</em>. Pick
-          any name (this becomes the bot account, e.g. <code>my-reviewer[bot]</code>) and
-          note the slug for <code>BOT_LOGIN</code>.
+          Or do it manually: <em>Settings → Developer settings → GitHub Apps → New GitHub
+          App</em>. Pick any name (this becomes the bot account, e.g.
+          <code>my-reviewer[bot]</code>) and note the slug for <code>BOT_LOGIN</code>.
         </li>
         <li>
           Set the webhook URL to
@@ -72,7 +79,8 @@
           Under <em>Permissions &amp; events</em>: Contents <strong>read</strong>;
           Issues <strong>read &amp; write</strong>; Pull requests
           <strong>read &amp; write</strong>; Checks <strong>write</strong>. Subscribe to
-          the <strong>Pull request</strong> and <strong>Issue comment</strong> events.
+          the <strong>Pull request</strong>, <strong>Issue comment</strong>, and
+          <strong>Pull request review comment</strong> events.
         </li>
         <li>
           Generate a private key at the bottom of the App page, then base64 it:
@@ -84,7 +92,11 @@
 
       <h2>2. Deploy the server</h2>
       <ol class="steps">
-        <li>Clone (or fork) the repository onto your host.</li>
+        <li>
+          Clone (or fork) the repository onto your host — or skip the build entirely by
+          pulling <code>ghcr.io/gregnazario/hedgehog-pr-bot:latest</code>, published on
+          every push to main.
+        </li>
         <li>
           Copy <code>.env.example</code> to <code>.env</code> and fill it in:
           <pre><code>APP_CLIENT_ID=Iv1.xxxx
@@ -100,6 +112,9 @@ PI_MODELS=zai/glm-5.3:high</code></pre>
           Start it and confirm health:
           <pre><code>docker compose up -d --build
 curl -s https://your-host/healthz   # {"ok":true,...}</code></pre>
+          No reverse proxy yet? Run <code>docker compose --profile tls up -d</code> with
+          <code>DOMAIN=pr.example.com</code> in <code>.env</code> and the included Caddy
+          sidecar serves automatic HTTPS on ports 80/443.
         </li>
       </ol>
       <p>
@@ -148,6 +163,18 @@ docker compose up -d --build   # after pulling changes</code></pre>
           Big diffs are capped at <code>MAX_DIFF_CHARS</code> (4M by default) — split huge
           PRs for better feedback.
         </li>
+      </ul>
+
+      <h2>Everyday commands</h2>
+      <ul>
+        <li><code>/review</code> on a PR — force a re-run (acknowledged with 👀).</li>
+        <li>
+          <code>/ignore</code> as a reply under a hedgehog comment — mute that finding on
+          future passes. Set <code>REVIEW_MEMORY_PATH</code> to a mounted volume to persist
+          the memory.
+        </li>
+        <li><code>PR_AUTHORS</code> — review several authors, not just one.</li>
+        <li><code>GET /metrics</code> — Prometheus counters for scraping.</li>
       </ul>
 
       <h2>Costs and limits</h2>

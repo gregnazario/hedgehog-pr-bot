@@ -20,7 +20,10 @@ export interface ModelSpec {
 
 export interface ReviewConfig {
   author: string;
+  authors: string[];
   botLogin: string;
+  /** File that persists /ignore fingerprints; empty disables the memory. */
+  memoryPath?: string;
   maxDiffChars: number;
   models: ModelSpec[];
   fingerprint: string;
@@ -36,6 +39,14 @@ export interface ReviewJob extends PullRequestRef {
   installationId: number;
   force: boolean;
   headSha?: string;
+  /** Set for /review comments so the trigger can be acknowledged. */
+  triggerCommentId?: number;
+  /** Check run created at enqueue time; adopted by the worker when it starts. */
+  checkRunId?: number;
+  /** "ignore" jobs mute a finding instead of reviewing; default is "review". */
+  kind?: "review" | "ignore";
+  /** For "ignore" jobs: the hedgehog comment the /ignore reply targets. */
+  replyToCommentId?: number;
 }
 
 export interface GitHubUser {
@@ -100,6 +111,13 @@ export interface NewCheckRun {
   status: string;
   title?: string;
   summary?: string;
+}
+
+export interface CheckRunRecord {
+  id: number;
+  name?: string;
+  status?: string;
+  started_at?: string;
 }
 
 export interface CheckRunUpdate {
@@ -213,7 +231,7 @@ export interface FinishProgressClient {
   updateCheckRun?(fullName: string, checkRunId: number, payload: CheckRunUpdate): Promise<unknown>;
 }
 
-export interface StartProgressClient {
+export interface StartProgressClient extends FinishProgressClient {
   listIssueReactions?(fullName: string, number: number): Promise<IssueReaction[]>;
   createIssueReaction?(
     fullName: string,
@@ -232,7 +250,39 @@ export interface ProgressClient extends StartProgressClient {
   listPullRequestReviews?(fullName: string, number: number): Promise<PullRequestReview[]>;
 }
 
-export type AppClient = ReviewerClient & ProgressClient;
+export interface ReviewComment {
+  id: number;
+  path?: string;
+  line?: number | null;
+  side?: string | null;
+  body?: string;
+  user?: GitHubUser;
+  in_reply_to_id?: number;
+}
+
+/** Used by the server to acknowledge /review trigger comments. */
+export interface AckClient {
+  reactToIssueComment?(fullName: string, commentId: number, content: string): Promise<unknown>;
+}
+
+/** Used by /ignore jobs to mute findings and resolve threads. */
+export interface IgnoreClient {
+  getReviewComment?(
+    fullName: string,
+    commentId: number,
+  ): Promise<{
+    id: number;
+    path?: string;
+    line?: number | null;
+    side?: string | null;
+    body?: string;
+    user?: { login?: string };
+    in_reply_to_id?: number;
+  }>;
+  reactToReviewComment?(fullName: string, commentId: number, content: string): Promise<unknown>;
+}
+
+export type AppClient = ReviewerClient & ProgressClient & AckClient & IgnoreClient;
 
 export interface TokenProvider {
   get(installationId: number): Promise<string>;

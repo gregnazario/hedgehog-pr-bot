@@ -13,16 +13,18 @@ Documentation for self-hosting and the full configuration reference live at
 
 The bot is event driven. A single long-running server receives GitHub App webhooks and
 queues a review immediately when one of your PRs is opened, reopened, marked ready, or
-updated with new commits. It adds a 👀 reaction and a pending **Pi review** check while
-Pi runs, then posts findings as GitHub review comments on the changed lines with a short
-summary on the review itself. No workflow file is needed in the repositories being
-reviewed.
+updated with new commits. The PR shows a 🥚 **queued** check from the moment the webhook
+is accepted; the worker adopts it as a 👀 **in-progress** check (with per-model progress
+when several models are configured) while Pi runs, then posts findings as GitHub review
+comments on the changed lines with a short summary on the review itself. No workflow file
+is needed in the repositories being reviewed.
 
 An hourly GitHub Actions scan remains as a recovery path for deliveries missed while the
 server is unavailable. The review marker makes both paths idempotent, so they do not post
 duplicate reviews for the same PR head and model configuration. Comment `/review` on a PR
-to force another pass of the current head. Add the `skip-review` label to silence hedgehog
-on that PR.
+to force another pass of the current head — the bot reacts 👀 to the comment immediately.
+Reply `/ignore` under any hedgehog comment to mute that finding on future passes. Add the
+`skip-review` label to silence hedgehog on that PR.
 
 ## What it reviews
 
@@ -63,7 +65,8 @@ credentials.
    ```
 
 5. In the GitHub App settings, enable webhooks, enter that URL and the exact same webhook
-   secret, then subscribe to **Pull request** and **Issue comment** events.
+   secret, then subscribe to **Pull request**, **Issue comment**, and
+   **Pull request review comment** events (the last one powers `/ignore`).
 6. Check `https://ms.sed.fyi/healthz`; it should return `{"ok":true,...}`.
 
 The Compose service restarts automatically, runs read-only as an unprivileged user, drops
@@ -118,12 +121,16 @@ and key files are ignored by Git. `.env.example` contains placeholders only.
 | `ZAI_API_KEY` | required for default | Z.AI Coding Plan credential used by Pi |
 | `PI_MODELS` | `zai/glm-5.3:high` | Comma-separated `provider/model[:thinking]` reviewers |
 | `PR_AUTHOR` | `gregnazario` | Only review PRs opened by this GitHub user |
+| `PR_AUTHORS` | `PR_AUTHOR` | Comma-separated list of reviewed authors (maintainer mode) |
+| `REVIEW_MEMORY_PATH` | unset | File persisting `/ignore` fingerprints; unset disables the memory |
+| `LOG_FORMAT` | `text` | `json` emits one `{time, level, message}` object per log line |
 | `BOT_LOGIN` | `hedgehog-pr-bot` | The App's bot account slug; set it when self-hosting under a different App name |
 | `MAX_DIFF_CHARS` | `4000000` | Maximum diff characters sent to each model |
 | `HOST` | `0.0.0.0` | Address inside the container |
 | `PORT` | `3000` | HTTP port |
 | `BIND_ADDRESS` | `127.0.0.1` | Docker Compose host binding |
 | `BIND_PORT` | `3000` | Docker Compose host-side port |
+| `DOMAIN` | unset | Required only by the optional compose `tls` profile (Caddy) |
 
 For example, multiple models can review each revision independently:
 
@@ -145,11 +152,20 @@ docker compose up -d --build
 ```
 
 The queue is intentionally in memory. GitHub retries failed webhook deliveries, and the
-hourly workflow reconciles open PRs after an outage. Large diffs are capped at four million
-characters; split very large changes into smaller PRs for more focused feedback. Inline
-comments are only attached to lines that appear in the pull request diff; anything the
-model cannot place is kept in the review summary. Previous hedgehog threads that are still
-valid get a “Still applies.” reply instead of a duplicate comment, unless the line moved.
+hourly workflow reconciles open PRs after an outage (it also sweeps 🥚 queued checks a
+restart may have stranded). Large diffs are capped at four million characters; the review
+body says when truncation happened. Inline comments are only attached to lines that appear
+in the pull request diff; anything the model cannot place is kept in the review summary.
+Previous hedgehog threads that are still valid get a “Still applies.” reply instead of a
+duplicate comment, unless the line moved. When several models run, findings on the same
+line merge into one comment listing every model that agreed.
+
+`GET /healthz` answers liveness; `GET /metrics` serves Prometheus counters (webhook
+events, job results, ignore jobs, queue depth). For automatic TLS on a spare domain, run
+`docker compose --profile tls up -d` with `DOMAIN` set — a Caddy sidecar handles
+certificates. A ready-made image is published to
+`ghcr.io/gregnazario/hedgehog-pr-bot:latest` on every push to main. Self-hosters can
+pre-fill their GitHub App with `.github/app-manifest.yml` (see the docs site).
 
 ## Development
 

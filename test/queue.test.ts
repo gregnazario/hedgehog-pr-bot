@@ -28,3 +28,14 @@ test("runs one review at a time", async () => {
   await queue.onIdle();
   assert.equal(maximum, 1);
 });
+
+test("notifies when a pending job is replaced", async () => {
+  const replaced: Array<[number, number]> = [];
+  const queue = new SerialDedupeQueue<{ key: string; revision: number }>(async () => {}, {
+    onReplace: (previous, next) => replaced.push([previous.revision, next.revision]),
+  });
+  queue.enqueue({ key: "owner/repo#1", revision: 1 });
+  queue.enqueue({ key: "owner/repo#1", revision: 2 });
+  await queue.onIdle();
+  assert.deepEqual(replaced, [[1, 2]]);
+});

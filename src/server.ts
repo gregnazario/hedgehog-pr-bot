@@ -5,7 +5,11 @@ import { pathToFileURL } from "node:url";
 import { loadPrivateKey, loadReviewConfig, positiveInteger } from "./config.ts";
 import { errorMessage } from "./errors.ts";
 import { GitHubClient, InstallationTokenProvider } from "./github.ts";
-import { prepareAcceptedJob } from "./progress.ts";
+import { applyIgnoreJob } from "./ignore.ts";
+import { makeJsonLogger } from "./logging.ts";
+import { loadIgnoreMemory } from "./memory.ts";
+import { createMetrics, type Metrics } from "./metrics.ts";
+import { cancelQueuedProgress, prepareAcceptedJob, startQueuedProgress } from "./progress.ts";
 import { SerialDedupeQueue } from "./queue.ts";
 import { reviewPullRequest } from "./reviewer.ts";
 import type {
@@ -25,6 +29,7 @@ export interface AppServerOptions {
   tokenProvider: TokenProvider;
   reviewConfig: ReviewConfig;
   logger?: Logger;
+  metrics?: Metrics;
   createClient?: (token: string) => AppClient;
 }
 
@@ -33,6 +38,7 @@ export function createAppServer({
   tokenProvider,
   reviewConfig,
   logger = console,
+  metrics = createMetrics(),
   createClient = (token) => new GitHubClient(token, globalThis.fetch, reviewConfig.botLogin),
 }: AppServerOptions) {
   if (!webhookSecret) throw new Error("GITHUB_WEBHOOK_SECRET is required");
@@ -41,19 +47,33 @@ export function createAppServer({
     async (job) => {
       const token = await tokenProvider.get(job.installationId);
       const client = createClient(token);
+      if (job.kind === "ignore") {
+        metrics.inc("ignore_jobs_total");
+        await applyIgnoreJob(
+          client,
+          job,
+          { botLogin: reviewConfig.botLogin, memoryPath: reviewConfig.memoryPath ?? "" },
+          logger,
+        );
+        return;
+      }
       const prepared = await prepareAcceptedJob(
         client,
         job,
         {
-          author: reviewConfig.author,
+          author: reviewConfig.authors,
           fingerprint: reviewConfig.fingerprint,
           force: Boolean(job.force),
           botLogin: reviewConfig.botLogin,
         },
         logger,
       );
-      if (!prepared) return;
-      await reviewPullRequest({
+      if (!prepared) {
+        metrics.inc("job_results_total", { result: "skipped" });
+        return;
+      }
+      const ignoredFingerprints = await loadIgnoreMemory(reviewConfig.memoryPath ?? "");
+      const result = await reviewPullRequest({
         client,
         fullName: prepared.fullName,
         number: prepared.number,
@@ -61,18 +81,66 @@ export function createAppServer({
         force: Boolean(job.force),
         checkRunId: prepared.checkRunId,
         eyesReactionId: prepared.eyesReactionId,
+        ignoredFingerprints,
         logger,
       });
+      metrics.inc("job_results_total", { result: result.status });
     },
     {
       onError: (error, job) => logger.error(`Review failed for ${job.key}: ${errorMessage(error)}`),
+      onReplace: (previous) => {
+        tokenProvider
+          .get(previous.installationId)
+          .then((token) =>
+            cancelQueuedProgress(createClient(token), {
+              fullName: previous.fullName,
+              checkRunId: previous.checkRunId,
+              logger,
+            }),
+          )
+          .catch((error) =>
+            logger.error(
+              `Could not cancel superseded check for ${previous.key}: ${errorMessage(error)}`,
+            ),
+          );
+      },
     },
   );
+
+  // Runs in the webhook request: one round trip for the queued check (well
+  // under GitHub's delivery timeout) so the PR shows queueing immediately and
+  // a replacement can cancel it. The /review ack is fire-and-forget.
+  const acceptJob = async (job: ReviewJob) => {
+    if (job.triggerCommentId) {
+      const commentId = job.triggerCommentId;
+      tokenProvider
+        .get(job.installationId)
+        .then((token) => createClient(token).reactToIssueComment?.(job.fullName, commentId, "eyes"))
+        .catch((error) => logger.error(`Could not acknowledge /review: ${errorMessage(error)}`));
+    }
+    if (job.headSha) {
+      try {
+        const token = await tokenProvider.get(job.installationId);
+        job.checkRunId = await startQueuedProgress(createClient(token), {
+          fullName: job.fullName,
+          headSha: job.headSha,
+          logger,
+        });
+      } catch (error) {
+        logger.error(`Could not open queued check for ${job.key}: ${errorMessage(error)}`);
+      }
+    }
+  };
 
   const server = createServer(async (request, response) => {
     try {
       if (request.method === "GET" && request.url === "/healthz") {
         return json(response, 200, { ok: true, queued: queue.size });
+      }
+      if (request.method === "GET" && request.url === "/metrics") {
+        response.writeHead(200, { "Content-Type": "text/plain; version=0.0.4; charset=utf-8" });
+        response.end(`${metrics.render()}# TYPE queue_depth gauge\nqueue_depth ${queue.size}\n`);
+        return;
       }
       if (request.method !== "POST" || request.url !== "/github/webhook") {
         return json(response, 404, { error: "not_found" });
@@ -93,8 +161,14 @@ export function createAppServer({
         return json(response, 400, { error: "invalid_json" });
       }
 
-      const job = reviewJobFromWebhook(eventName, payload, reviewConfig.author);
-      if (!job) return json(response, 202, { accepted: false });
+      metrics.inc("webhook_events_total", { event: eventName ?? "unknown" });
+      const job = reviewJobFromWebhook(eventName, payload, reviewConfig.authors);
+      if (!job) {
+        metrics.inc("webhook_rejected_total");
+        return json(response, 202, { accepted: false });
+      }
+      metrics.inc("webhook_accepted_total");
+      await acceptJob(job);
       queue.enqueue(job);
       logger.log(`Queued ${job.key} at ${job.headSha?.slice(0, 7) || "unknown"}`);
       return json(response, 202, { accepted: true });
@@ -109,7 +183,10 @@ export function createAppServer({
   return { server, queue };
 }
 
-export async function startFromEnvironment(env: EnvSource = process.env, logger: Logger = console) {
+export async function startFromEnvironment(
+  env: EnvSource = process.env,
+  logger: Logger = env.LOG_FORMAT === "json" ? makeJsonLogger() : console,
+) {
   const reviewConfig = loadReviewConfig(env);
   const tokenProvider = new InstallationTokenProvider({
     clientId: env.APP_CLIENT_ID || env.APP_ID,

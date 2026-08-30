@@ -2,7 +2,8 @@ import { spawn } from "node:child_process";
 import { reviewMarker } from "./config.ts";
 import { annotateDiff, indexDiffLocations } from "./diff.ts";
 import { errorMessage } from "./errors.ts";
-import { finishProgress } from "./progress.ts";
+import { findingFingerprint } from "./memory.ts";
+import { finishProgress, reportModelProgress } from "./progress.ts";
 import { buildReviewBody, parseReviewOutput, toReviewComments } from "./review-format.ts";
 import {
   applyThreadDecisions,
@@ -12,6 +13,8 @@ import {
   reviewEventFromSeverities,
   reviewHasCurrentMarker,
   STILL_APPLIES_REPLY,
+  severityRank,
+  withRerunHint,
 } from "./signals.ts";
 import type {
   CheckOutcome,
@@ -38,6 +41,7 @@ export interface ReviewRequest {
   checkRunId?: number;
   eyesReactionId?: number;
   runModel?: (bundle: string, modelSpec: ModelSpec) => Promise<string>;
+  ignoredFingerprints?: ReadonlySet<string>;
   logger?: Logger;
 }
 
@@ -50,6 +54,7 @@ export async function reviewPullRequest({
   checkRunId,
   eyesReactionId,
   runModel = runPi,
+  ignoredFingerprints = new Set<string>(),
   logger = console,
 }: ReviewRequest): Promise<ReviewResult> {
   try {
@@ -59,7 +64,9 @@ export async function reviewPullRequest({
       number,
       config,
       force,
+      checkRunId,
       runModel,
+      ignoredFingerprints,
       logger,
     });
     await finishProgress(client, {
@@ -90,7 +97,9 @@ interface ReviewRun {
   number: number;
   config: ReviewConfig;
   force: boolean;
+  checkRunId?: number;
   runModel: (bundle: string, modelSpec: ModelSpec) => Promise<string>;
+  ignoredFingerprints: ReadonlySet<string>;
   logger: Logger;
 }
 
@@ -100,7 +109,9 @@ async function runReview({
   number,
   config,
   force,
+  checkRunId,
   runModel,
+  ignoredFingerprints,
   logger,
 }: ReviewRun): Promise<ReviewResult> {
   const pullRequest = await client.getPullRequest(fullName, number);
@@ -126,9 +137,11 @@ async function runReview({
     modelSpec: ModelSpec;
     parsed: ReturnType<typeof parseReviewOutput>;
   }> = [];
-  for (const modelSpec of config.models) {
+  let findingsSoFar = 0;
+  for (const [index, modelSpec] of config.models.entries()) {
     logger.log(`Running ${modelSpec.label} for ${fullName}#${number}`);
     const parsed = parseReviewOutput(await runModel(bundle, modelSpec));
+    findingsSoFar += parsed.findings.length;
     parsedReviews.push({
       modelSpec,
       parsed: {
@@ -136,10 +149,24 @@ async function runReview({
         findings: parsed.findings.map((finding) => ({ ...finding, modelLabel: modelSpec.label })),
       },
     });
+    if (config.models.length > 1) {
+      await reportModelProgress(client, {
+        fullName,
+        checkRunId,
+        modelsDone: index + 1,
+        modelsTotal: config.models.length,
+        findingsSoFar,
+        lastLabel: modelSpec.label,
+        logger,
+      });
+    }
   }
 
   const includeModel = config.models.length > 1;
   const merged = mergeParsedReviews(parsedReviews);
+  merged.findings = merged.findings.filter(
+    (finding) => !ignoredFingerprints.has(findingFingerprint(finding)),
+  );
   const decisions = applyThreadDecisions({
     findings: merged.findings,
     addressedCommentIds: merged.addressedCommentIds,
@@ -164,12 +191,14 @@ async function runReview({
       : parsedReviews
           .map(({ modelSpec, parsed }) => `### ${modelSpec.label}\n\n${parsed.summary}`)
           .join("\n\n");
+  const diffTruncated = diff.length > config.maxDiffChars;
   const bodyFor = (failedComments: InlineComment[] = []) =>
     buildReviewBody({
       marker,
       summary,
       clean,
       severities,
+      diffTruncated,
       unmapped: [
         ...unmapped,
         ...failedComments.map((comment) => ({
@@ -339,8 +368,28 @@ function mergeParsedReviews(
   addressedCommentIds: number[];
   stillApplies: StillApplies[];
 } {
+  // Findings from different models that land on the same exact anchor describe
+  // one issue: keep the most severe body and join the model labels so the
+  // comment shows how many models agreed.
+  const groups = new Map<string, Finding[]>();
+  for (const { parsed } of parsedReviews) {
+    for (const finding of parsed.findings) {
+      const key = `${finding.path}\0${finding.side}\0${finding.line}`;
+      const group = groups.get(key);
+      if (group) group.push(finding);
+      else groups.set(key, [finding]);
+    }
+  }
+  const findings = [...groups.values()].map((group) => {
+    if (group.length === 1) return group[0];
+    const ranked = [...group].sort(
+      (left, right) => severityRank[left.severity] - severityRank[right.severity],
+    );
+    const labels = [...new Set(group.map((item) => item.modelLabel).filter(Boolean))];
+    return { ...ranked[0], modelLabel: labels.join(", ") };
+  });
   return {
-    findings: parsedReviews.flatMap(({ parsed }) => parsed.findings),
+    findings,
     addressedCommentIds: parsedReviews.flatMap(({ parsed }) => parsed.addressedCommentIds ?? []),
     stillApplies: parsedReviews.flatMap(({ parsed }) => parsed.stillApplies ?? []),
   };
@@ -503,7 +552,7 @@ function outcomeFor(result: ReviewResult): CheckOutcome {
     return {
       conclusion: "skipped",
       title: "Already reviewed",
-      summary: "This head was already reviewed.",
+      summary: withRerunHint("This head was already reviewed."),
     };
   }
   return { conclusion: "skipped", title: "Skipped", summary: result.status };

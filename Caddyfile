@@ -1,0 +1,4 @@
+# Used by the optional "tls" compose profile: automatic HTTPS for DOMAIN.
+{$DOMAIN} {
+	reverse_proxy hedgehog-pr-bot:3000
+}
