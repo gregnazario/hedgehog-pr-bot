@@ -168,6 +168,33 @@ export function indexDiffLocations(diff: unknown): DiffLocations {
   };
 }
 
+export interface PullRequestFile {
+  filename: string;
+  previous_filename?: string;
+  status?: string;
+  patch?: string | null;
+}
+
+/** Rebuilds a unified diff from "list pull request files" entries so the
+ * diff parser works on PRs GitHub refuses to serve as one document. */
+export function diffFromPullRequestFiles(files: readonly PullRequestFile[]): string {
+  const chunks: string[] = [];
+  for (const file of files) {
+    const oldPath = file.previous_filename ?? file.filename;
+    const lines = [`diff --git a/${oldPath} b/${file.filename}`];
+    if (file.status === "renamed" && file.previous_filename) {
+      lines.push(`rename from ${file.previous_filename}`, `rename to ${file.filename}`);
+    }
+    lines.push(
+      `--- ${file.status === "added" ? "/dev/null" : `a/${oldPath}`}`,
+      `+++ ${file.status === "removed" ? "/dev/null" : `b/${file.filename}`}`,
+    );
+    if (file.patch) lines.push(file.patch);
+    chunks.push(lines.join("\n"));
+  }
+  return chunks.join("\n");
+}
+
 export function annotateDiff(diff: unknown): string {
   const output: string[] = [];
   let oldLine = 0;

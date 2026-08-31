@@ -1,4 +1,5 @@
 import { type KeyObject, sign } from "node:crypto";
+import { diffFromPullRequestFiles, type PullRequestFile } from "./diff.ts";
 import {
   DEFAULT_BOT_LOGIN,
   isHedgehogLogin,
@@ -171,11 +172,21 @@ export class GitHubClient {
     return this.paginatedList(`/repos/${repoPath(fullName)}/issues/${number}/comments`);
   }
 
-  getPullRequestDiff(fullName: string, number: number): Promise<string> {
-    return this.request<string>(`/repos/${repoPath(fullName)}/pulls/${number}`, {
-      accept: "application/vnd.github.diff",
-      responseType: "text",
-    });
+  async getPullRequestDiff(fullName: string, number: number): Promise<string> {
+    try {
+      return await this.request<string>(`/repos/${repoPath(fullName)}/pulls/${number}`, {
+        accept: "application/vnd.github.diff",
+        responseType: "text",
+      });
+    } catch (error) {
+      // GitHub refuses one-shot diffs over 300 files; rebuild the diff from
+      // the paginated per-file patches instead.
+      if (!(error instanceof GitHubHttpError) || error.status !== 406) throw error;
+      const files = await this.paginatedList<PullRequestFile>(
+        `/repos/${repoPath(fullName)}/pulls/${number}/files`,
+      );
+      return diffFromPullRequestFiles(files);
+    }
   }
 
   listPullRequestReviews(fullName: string, number: number): Promise<PullRequestReview[]> {
@@ -530,9 +541,20 @@ function base64url(value: string): string {
   return Buffer.from(value).toString("base64url");
 }
 
+export class GitHubHttpError extends Error {
+  readonly status: number;
+  readonly body: string;
+
+  constructor(prefix: string, response: Response, body: string) {
+    const detail = body.slice(0, 2_000).trim();
+    super(`${prefix}: GitHub returned ${response.status}${detail ? `: ${detail}` : ""}`);
+    this.status = response.status;
+    this.body = body;
+  }
+}
+
 async function githubError(response: Response, prefix: string): Promise<Error> {
-  const detail = (await response.text()).slice(0, 2_000).trim();
-  return new Error(`${prefix}: GitHub returned ${response.status}${detail ? `: ${detail}` : ""}`);
+  return new GitHubHttpError(prefix, response, await response.text());
 }
 
 const reviewThreadsQuery = `
