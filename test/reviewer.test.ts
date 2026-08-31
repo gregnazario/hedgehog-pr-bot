@@ -698,3 +698,58 @@ test("ignored fingerprints drop matching findings", async () => {
   assert.equal(posted.comments, undefined);
   assert.match(posted.body, /No new findings/);
 });
+
+test("halves the diff cap and retries when the prompt exceeds model limits", async () => {
+  let posted: any;
+  const seenBundles: number[] = [];
+  const client = baseClient({
+    getPullRequestDiff: async () => `diff --git a/src/app.mjs b/src/app.mjs
+--- a/src/app.mjs
++++ b/src/app.mjs
+@@ -1,1 +1,${"x".length} @@
++${"line\n+".repeat(50).slice(0, -1)}
+`,
+    createPullRequestReview: async (_repo, _number, payload) => {
+      posted = payload;
+    },
+  });
+  const result = await reviewPullRequest({
+    client,
+    fullName: "gregnazario/example",
+    number: 7,
+    config: { ...config, maxDiffChars: 400 },
+    runModel: async (reviewBundle) => {
+      seenBundles.push(reviewBundle.length);
+      if (seenBundles.length === 1) throw new Error("Prompt exceeds max length");
+      return jsonReview();
+    },
+    logger: { log() {}, error() {} },
+  });
+  assert.ok(result.status === "reviewed");
+  assert.equal(seenBundles.length, 2);
+  assert.ok(seenBundles[1] < seenBundles[0]);
+  assert.match(posted.body, /diff exceeded the configured size limit/);
+});
+
+test("fails after three prompt-length retries", async () => {
+  const attempts: number[] = [];
+  const client = baseClient({
+    updateCheckRun: async () => {},
+  });
+  await assert.rejects(
+    () =>
+      reviewPullRequest({
+        client,
+        fullName: "gregnazario/example",
+        number: 7,
+        config: { ...config, maxDiffChars: 400 },
+        runModel: async (reviewBundle) => {
+          attempts.push(reviewBundle.length);
+          throw new Error("Prompt exceeds max length");
+        },
+        logger: { log() {}, error() {} },
+      }),
+    /max length/,
+  );
+  assert.equal(attempts.length, 4);
+});

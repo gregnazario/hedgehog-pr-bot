@@ -132,7 +132,10 @@ async function runReview({
     loadThreads(client, fullName, number, logger),
   ]);
   const locations = indexDiffLocations(diff);
-  const bundle = buildReviewBundle(fullName, pullRequest, diff, config.maxDiffChars, threads);
+  // MAX_DIFF_CHARS is an upper bound; models with smaller context windows can
+  // still reject the prompt, so halve the visible diff and retry.
+  let effectiveMaxDiffChars = config.maxDiffChars;
+  let bundle = buildReviewBundle(fullName, pullRequest, diff, effectiveMaxDiffChars, threads);
   const parsedReviews: Array<{
     modelSpec: ModelSpec;
     parsed: ReturnType<typeof parseReviewOutput>;
@@ -140,7 +143,23 @@ async function runReview({
   let findingsSoFar = 0;
   for (const [index, modelSpec] of config.models.entries()) {
     logger.log(`Running ${modelSpec.label} for ${fullName}#${number}`);
-    const parsed = parseReviewOutput(await runModel(bundle, modelSpec));
+    let output = "";
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        output = await runModel(bundle, modelSpec);
+        break;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const halveable = attempt < 3 && /prompt exceeds max length|context length/i.test(message);
+        if (!halveable) throw error;
+        effectiveMaxDiffChars = Math.floor(effectiveMaxDiffChars / 2);
+        logger.log(
+          `Prompt too long for ${modelSpec.label}; retrying with ${effectiveMaxDiffChars} diff chars`,
+        );
+        bundle = buildReviewBundle(fullName, pullRequest, diff, effectiveMaxDiffChars, threads);
+      }
+    }
+    const parsed = parseReviewOutput(output);
     findingsSoFar += parsed.findings.length;
     parsedReviews.push({
       modelSpec,
@@ -191,7 +210,7 @@ async function runReview({
       : parsedReviews
           .map(({ modelSpec, parsed }) => `### ${modelSpec.label}\n\n${parsed.summary}`)
           .join("\n\n");
-  const diffTruncated = diff.length > config.maxDiffChars;
+  const diffTruncated = diff.length > effectiveMaxDiffChars;
   const bodyFor = (failedComments: InlineComment[] = []) =>
     buildReviewBody({
       marker,
