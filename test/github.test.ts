@@ -387,3 +387,36 @@ test("listUnresolvedHedgehogThreads honors a custom bot login", async () => {
   assert.equal(threads.length, 1);
   assert.equal(threads[0].commentId, 707);
 });
+
+test("getPullRequestDiff falls back to per-file patches past 300 files", async () => {
+  const calls: string[] = [];
+  const client = new GitHubClient("token", async (url, options = {}) => {
+    const headers = options.headers as Record<string, string> | undefined;
+    calls.push(`${options.method ?? "GET"} ${url} ${headers?.Accept ?? ""}`);
+    if (url.endsWith("/pulls/7")) {
+      return new Response(
+        JSON.stringify({
+          message: "Sorry, the diff exceeded the maximum number of files (300).",
+          errors: [{ resource: "PullRequest", field: "diff", code: "too_large" }],
+        }),
+        { status: 406, headers: { "Content-Type": "application/json" } },
+      );
+    }
+    return new Response(
+      JSON.stringify([
+        {
+          filename: "src/app.mjs",
+          status: "modified",
+          patch: "@@ -1,1 +1,2 @@\n ctx\n+added",
+        },
+      ]),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    );
+  });
+  const diff = await client.getPullRequestDiff("gregnazario/example", 7);
+  assert.match(diff, /diff --git a\/src\/app\.mjs b\/src\/app\.mjs/);
+  assert.match(diff, /\+added/);
+  assert.equal(calls.length, 2);
+  assert.match(calls[0], /application\/vnd\.github\.diff/);
+  assert.match(calls[1], /\/pulls\/7\/files/);
+});

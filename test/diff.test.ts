@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { annotateDiff, indexDiffLocations, resolveCommentAnchor } from "../src/diff.ts";
+import {
+  annotateDiff,
+  diffFromPullRequestFiles,
+  indexDiffLocations,
+  resolveCommentAnchor,
+} from "../src/diff.ts";
 
 const modifiedDiff = `diff --git a/src/app.mjs b/src/app.mjs
 index 111..222 100644
@@ -152,4 +157,31 @@ test("returns null when the file is not in the diff", () => {
     resolveCommentAnchor(locations, { path: "missing.mjs", line: 1, side: "RIGHT" }),
     null,
   );
+});
+
+test("diffFromPullRequestFiles rebuilds a diff the indexer understands", () => {
+  const diff = diffFromPullRequestFiles([
+    {
+      filename: "src/app.mjs",
+      status: "modified",
+      patch: "@@ -1,2 +1,3 @@\n old line\n-new line\n+new line\n+added line",
+    },
+    {
+      filename: "renamed.mjs",
+      previous_filename: "old.mjs",
+      status: "renamed",
+      patch: "@@ -1,1 +1,1 @@\n-const a = 1;\n+const a = 2;",
+    },
+    { filename: "gone.mjs", status: "removed", patch: "@@ -1,1 +0,0 @@\n-deleted body" },
+    { filename: "new.mjs", status: "added", patch: "@@ -0,0 +1,1 @@\n+created" },
+    { filename: "binary.png", status: "modified", patch: null },
+  ]);
+  const locations = indexDiffLocations(diff);
+  assert.equal(locations.has("src/app.mjs", "RIGHT", 2), true);
+  assert.equal(locations.has("src/app.mjs", "LEFT", 1), true);
+  assert.equal(locations.resolvePath("old.mjs"), "renamed.mjs");
+  assert.equal(locations.has("renamed.mjs", "RIGHT", 1), true);
+  assert.equal(locations.has("gone.mjs", "LEFT", 1), true);
+  assert.equal(locations.has("new.mjs", "RIGHT", 1), true);
+  assert.match(annotateDiff(diff), /\[RIGHT 3\] \+added line/);
 });

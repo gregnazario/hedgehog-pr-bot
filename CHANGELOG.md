@@ -8,6 +8,10 @@ All notable changes to hedgehog-pr-bot are documented here. The format follows
 
 ### Fixed
 
+- Reviews no longer fail on pull requests with more than 300 files: when GitHub
+  refuses the one-shot diff (406), the diff is rebuilt from the paginated
+  per-file patch API.
+
 - Derive thread comment sides from line numbers after GitHub removed the `side`
   field from the GraphQL `PullRequestReviewComment` type; listing unresolved
   threads no longer errors out (thread follow-up works again).
