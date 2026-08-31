@@ -8,6 +8,8 @@ All notable changes to hedgehog-pr-bot are documented here. The format follows
 
 ### Fixed
 
+- Reviews halve the visible diff and retry (up to three times) when a model
+  rejects the prompt for exceeding its context window, instead of failing.
 - Reviews no longer fail on pull requests with more than 300 files: when GitHub
   refuses the one-shot diff (406), the diff is rebuilt from the paginated
   per-file patch API.
