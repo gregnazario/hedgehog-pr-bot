@@ -6,6 +6,8 @@ All notable changes to hedgehog-pr-bot are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-02
+
 ### Added
 
 - `REVIEW_VERIFY` (default on): a second model pass verifies Critical/High
