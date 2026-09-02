@@ -110,6 +110,16 @@
             </td>
           </tr>
           <tr>
+            <td><code>PI_TIMEOUT_MS</code></td>
+            <td><code>600000</code></td>
+            <td>Wall-clock cap for one model run; a hung run cannot block the queue.</td>
+          </tr>
+          <tr>
+            <td><code>NOTIFY_WEBHOOK</code></td>
+            <td>unset</td>
+            <td>POSTed with each review result: repository, PR, head, status, severity counts.</td>
+          </tr>
+          <tr>
             <td><code>LOG_FORMAT</code></td>
             <td><code>text</code></td>
             <td><code>json</code> emits one <code>{time, level, message}</code> object per log line.</td>

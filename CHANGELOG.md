@@ -6,6 +6,16 @@ All notable changes to hedgehog-pr-bot are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `PI_TIMEOUT_MS` caps each model run (default ten minutes) so a hung Pi process
+  cannot block the serial review queue until restart.
+- GitHub requests retry `429`/`5xx` responses up to twice, honoring `Retry-After`.
+- `NOTIFY_WEBHOOK` receives each review result as JSON.
+- A watchdog workflow probes `/healthz` and queue depth every 15 minutes and opens
+  (and later closes) an issue on failure; a weekly workflow opens a PR when a newer
+  Pi release exists.
+
 ### Fixed
 
 - Reviews halve the visible diff and retry (up to three times) when a model
