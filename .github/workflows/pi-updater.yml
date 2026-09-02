@@ -49,4 +49,9 @@ jobs:
           gh pr create \
             --title "Update Pi to $LATEST" \
             --body "Automated weekly check: the latest \`@earendil-works/pi-coding-agent\` release is \`$LATEST\` (was \`$CURRENT\`). Updates the Dockerfile pin and the README default. **Before merging:** also bump the \`npm install\` step in \`.github/workflows/review.yml\` — pushes from Actions cannot modify workflow files." \
-            || echo "Update PR already open."
+            || if gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --json number --jq 'length' | grep -q '^1$'; then
+                 echo "Update PR already open."
+               else
+                 echo "::warning::Could not open the update PR — check that Actions may create pull requests (Settings → Actions → General)."
+                 exit 1
+               fi
