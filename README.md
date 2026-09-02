@@ -124,6 +124,8 @@ and key files are ignored by Git. `.env.example` contains placeholders only.
 | `PR_AUTHORS` | `PR_AUTHOR` | Comma-separated list of reviewed authors (maintainer mode) |
 | `REVIEW_MEMORY_PATH` | unset | File persisting `/ignore` fingerprints; unset disables the memory |
 | `LOG_FORMAT` | `text` | `json` emits one `{time, level, message}` object per log line |
+| `PI_TIMEOUT_MS` | `600000` | Wall-clock cap for one model run; protects the serial queue |
+| `NOTIFY_WEBHOOK` | unset | URL posted each review result (Slack/Discord/generic) |
 | `BOT_LOGIN` | `hedgehog-pr-bot` | The App's bot account slug; set it when self-hosting under a different App name |
 | `MAX_DIFF_CHARS` | `4000000` | Maximum diff characters sent to each model |
 | `HOST` | `0.0.0.0` | Address inside the container |

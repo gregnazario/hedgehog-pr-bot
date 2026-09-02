@@ -1,0 +1,68 @@
+name: Watchdog
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: watchdog
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      HEALTHCHECK_URL: ${{ vars.HEALTHCHECK_URL || 'https://ms.sed.fyi' }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Probe the server
+        id: probe
+        run: |
+          set -u
+          PROBE_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          BODY=$(curl -sS --max-time 20 "$HEALTHCHECK_URL/healthz" || true)
+          HEALTH="down"
+          QUEUE=""
+          if printf '%s' "$BODY" | grep -q '"ok":true'; then
+            HEALTH="up"
+            QUEUE=$(curl -sS --max-time 20 "$HEALTHCHECK_URL/metrics" \
+              | awk '$1 == "queue_depth" {print $2}')
+          fi
+          REASON=""
+          if [ "$HEALTH" = "down" ]; then
+            REASON="healthz did not answer ok (got: ${BODY:-no response})"
+          elif [ -n "$QUEUE" ] && [ "$QUEUE" -gt 25 ]; then
+            REASON="queue depth is $QUEUE"
+          fi
+          {
+            echo "reason=$REASON"
+            echo "probe_at=$PROBE_AT"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Alert or recover
+        env:
+          REASON: ${{ steps.probe.outputs.reason }}
+          PROBE_AT: ${{ steps.probe.outputs.probe_at }}
+        run: |
+          set -u
+          ISSUE=$(gh issue list --state open --search "in:title Watchdog: bot endpoint failing" \
+            --json number --jq '.[0].number // empty')
+          if [ -n "$REASON" ]; then
+            BODY="Watchdog failure at $PROBE_AT: $REASON."
+            if [ -n "$ISSUE" ]; then
+              gh issue comment "$ISSUE" --body "$BODY"
+            else
+              gh issue create \
+                --title "Watchdog: bot endpoint failing" \
+                --body "$BODY See https://github.com/gregnazario/hedgehog-pr-bot/actions/workflows/watchdog.yml for the probe history."
+            fi
+          elif [ -n "$ISSUE" ]; then
+            gh issue comment "$ISSUE" --body "Recovered at $PROBE_AT."
+            gh issue close "$ISSUE"
+          fi

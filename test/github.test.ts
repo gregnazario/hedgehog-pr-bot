@@ -420,3 +420,41 @@ test("getPullRequestDiff falls back to per-file patches past 300 files", async (
   assert.match(calls[0], /application\/vnd\.github\.diff/);
   assert.match(calls[1], /\/pulls\/7\/files/);
 });
+
+test("retries transient 5xx and 429 responses before failing", async () => {
+  const statuses: number[] = [];
+  const flaky = async () => {
+    statuses.push(500);
+    if (statuses.length < 2) {
+      return new Response("server error", { status: 500, headers: { "retry-after": "0" } });
+    }
+    return new Response(JSON.stringify([{ ok: true }]), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+  const recovered = await new GitHubClient("token", flaky).request("/example");
+  assert.equal((recovered as any[]).length, 1);
+  assert.equal(statuses.length, 2);
+
+  let throttled = 0;
+  const always = async () => {
+    throttled += 1;
+    return new Response("nope", { status: 429, headers: { "retry-after": "0" } });
+  };
+  await assert.rejects(
+    () => new GitHubClient("token", always).request("/example"),
+    /GitHub returned 429/,
+  );
+  assert.equal(throttled, 3);
+});
+
+test("does not retry non-transient statuses", async () => {
+  let calls = 0;
+  const client = new GitHubClient("token", async () => {
+    calls += 1;
+    return new Response("missing", { status: 404 });
+  });
+  await assert.rejects(() => client.request("/example"), /GitHub returned 404/);
+  assert.equal(calls, 1);
+});

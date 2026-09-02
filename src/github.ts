@@ -119,19 +119,33 @@ export class GitHubClient {
     route: string,
     { method = "GET", accept, body, responseType = "json" }: RequestOptions = {},
   ): Promise<T> {
-    const response = await this.fetchImpl(`https://api.github.com${route}`, {
-      method,
-      headers: {
-        ...githubHeaders(this.token),
-        ...(accept ? { Accept: accept } : {}),
-        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
-      },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    });
-    if (!response.ok) throw await githubError(response, `${method} ${route} failed`);
-    if (responseType === "text") return (await response.text()) as unknown as T;
-    if (response.status === 204) return null as T;
-    return (await response.json()) as T;
+    // Transient server errors and rate limits get a bounded retry (honoring
+    // Retry-After) so one blip does not waste a finished model run.
+    const attempts = 3;
+    let response: Response | undefined;
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      response = await this.fetchImpl(`https://api.github.com${route}`, {
+        method,
+        headers: {
+          ...githubHeaders(this.token),
+          ...(accept ? { Accept: accept } : {}),
+          ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+        },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      });
+      const retryable = !response.ok && (response.status === 429 || response.status >= 500);
+      if (!retryable || attempt === attempts - 1) break;
+      const retryAfter = Number(response.headers.get("retry-after"));
+      const delayMs = Number.isFinite(retryAfter) && retryAfter >= 0 ? retryAfter * 1000 : 250;
+      await new Promise((resolve) => setTimeout(resolve, Math.min(delayMs, 5_000)));
+    }
+    // The loop always leaves `response` set: it runs at least once and only
+    // `continue`s after assigning.
+    const final: Response = response as Response;
+    if (!final.ok) throw await githubError(final, `${method} ${route} failed`);
+    if (responseType === "text") return (await final.text()) as unknown as T;
+    if (final.status === 204) return null as T;
+    return (await final.json()) as T;
   }
 
   async paginatedList<T = Record<string, unknown>>(route: string): Promise<T[]> {

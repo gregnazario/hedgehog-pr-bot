@@ -24,6 +24,10 @@ export interface ReviewConfig {
   botLogin: string;
   /** File that persists /ignore fingerprints; empty disables the memory. */
   memoryPath?: string;
+  /** Wall-clock cap for one model run; protects the serial queue. */
+  piTimeoutMs?: number;
+  /** Optional URL notified with each review result; empty disables. */
+  notifyWebhook?: string;
   maxDiffChars: number;
   models: ModelSpec[];
   fingerprint: string;
