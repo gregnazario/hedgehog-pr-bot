@@ -43,6 +43,7 @@ export function parseModelSpecs(value: string): ModelSpec[] {
 
 export function loadReviewConfig(env: EnvSource = process.env): ReviewConfig {
   const models = parseModelSpecs(env.PI_MODELS || "zai/glm-5.3:high");
+  const largeModels = env.PI_MODELS_LARGE ? parseModelSpecs(env.PI_MODELS_LARGE) : [];
   const authors = (env.PR_AUTHORS || env.PR_AUTHOR || "gregnazario")
     .split(",")
     .map((entry) => entry.trim().toLowerCase())
@@ -56,8 +57,11 @@ export function loadReviewConfig(env: EnvSource = process.env): ReviewConfig {
     notifyWebhook: env.NOTIFY_WEBHOOK || "",
     maxDiffChars: positiveInteger(env.MAX_DIFF_CHARS, 4_000_000),
     models,
+    largeModels,
+    fileContextBytes: positiveInteger(env.FILE_CONTEXT_BYTES, 64 * 1024),
+    verifyFindings: env.REVIEW_VERIFY !== "false",
     fingerprint: createHash("sha256")
-      .update(models.map((spec) => spec.label).join(","))
+      .update([...models, ...largeModels].map((spec) => spec.label).join(","))
       .digest("hex")
       .slice(0, 12),
   };

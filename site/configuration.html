@@ -130,6 +130,34 @@
             <td>Required only by the optional compose <code>tls</code> profile (Caddy).</td>
           </tr>
           <tr>
+            <td><code>PI_MODELS_LARGE</code></td>
+            <td>unset</td>
+            <td>
+              Reviewers used for diffs above 500k characters — point this at a
+              long-context or cheaper model. Participates in the review
+              fingerprint.
+            </td>
+          </tr>
+          <tr>
+            <td><code>REVIEW_VERIFY</code></td>
+            <td><code>true</code></td>
+            <td>
+              A second model pass re-checks every Critical/High finding against
+              the diff and confirms, downgrades, or drops it before anything is
+              posted. Fails open: verification problems keep the original
+              findings.
+            </td>
+          </tr>
+          <tr>
+            <td><code>FILE_CONTEXT_BYTES</code></td>
+            <td><code>65536</code></td>
+            <td>
+              Budget for embedding the complete contents of touched files in
+              the prompt, so findings can reference the code a change calls
+              into. <code>0</code> disables.
+            </td>
+          </tr>
+          <tr>
             <td><code>MAX_DIFF_CHARS</code></td>
             <td><code>4000000</code></td>
             <td>Diff cap sent to each model; larger diffs are truncated.</td>

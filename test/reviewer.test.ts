@@ -132,6 +132,7 @@ deleted file mode 100644
           },
         ],
       }),
+    verifyModel: async () => '{"verdicts":[]}',
     logger: { log() {}, error() {} },
   });
   assert.equal(result.status, "reviewed");
@@ -614,6 +615,7 @@ test("deduplicates multi-model findings that share an anchor", async () => {
               },
             ],
           }),
+    verifyModel: async () => '{"verdicts":[]}',
     logger: { log() {}, error() {} },
   });
   assert.ok(result.status === "reviewed");
@@ -752,4 +754,179 @@ test("fails after three prompt-length retries", async () => {
     /max length/,
   );
   assert.equal(attempts.length, 4);
+});
+
+const confirmAll = async () => '{"verdicts":[]}';
+
+test("verification drops a disproven Critical finding", async () => {
+  let posted: any;
+  let verifyBundle = "";
+  const client = baseClient({
+    createPullRequestReview: async (_repo, _number, payload) => {
+      posted = payload;
+    },
+  });
+  const result = await reviewPullRequest({
+    client,
+    fullName: "gregnazario/example",
+    number: 7,
+    config,
+    runModel: async () =>
+      JSON.stringify({
+        summary: "Maybe a leak.",
+        findings: [
+          {
+            severity: "Critical",
+            path: "src/app.mjs",
+            line: 4,
+            side: "RIGHT",
+            body: "VERSION leaks a secret.",
+          },
+        ],
+      }),
+    verifyModel: async (bundle) => {
+      verifyBundle = bundle;
+      return JSON.stringify({ verdicts: [{ index: 0, verdict: "drop" }] });
+    },
+    logger: { log() {}, error() {} },
+  });
+  assert.ok(result.status === "reviewed");
+  assert.match(verifyBundle, /0\. \[Critical\]/);
+  assert.equal(posted.event, "APPROVE");
+  assert.equal(posted.comments, undefined);
+});
+
+test("verification downgrades High findings to the given severity", async () => {
+  let posted: any;
+  const client = baseClient({
+    createPullRequestReview: async (_repo, _number, payload) => {
+      posted = payload;
+    },
+  });
+  await reviewPullRequest({
+    client,
+    fullName: "gregnazario/example",
+    number: 7,
+    config,
+    runModel: async () =>
+      JSON.stringify({
+        summary: "Risky.",
+        findings: [
+          { severity: "High", path: "src/app.mjs", line: 4, side: "RIGHT", body: "Risky default." },
+        ],
+      }),
+    verifyModel: async () =>
+      JSON.stringify({ verdicts: [{ index: 0, verdict: "downgrade", severity: "Low" }] }),
+    logger: { log() {}, error() {} },
+  });
+  assert.equal(posted.event, "COMMENT");
+  assert.match(posted.comments[0].body, /\*\*Low:\*\*/);
+});
+
+test("unparseable verification output keeps the original findings", async () => {
+  let posted: any;
+  const client = baseClient({
+    createPullRequestReview: async (_repo, _number, payload) => {
+      posted = payload;
+    },
+  });
+  await reviewPullRequest({
+    client,
+    fullName: "gregnazario/example",
+    number: 7,
+    config,
+    runModel: async () =>
+      JSON.stringify({
+        summary: "Real risk.",
+        findings: [
+          { severity: "High", path: "src/app.mjs", line: 4, side: "RIGHT", body: "Risky default." },
+        ],
+      }),
+    verifyModel: async () => "I could not produce JSON",
+    logger: { log() {}, error() {} },
+  });
+  assert.equal(posted.event, "REQUEST_CHANGES");
+});
+
+test("REVIEW_VERIFY=false skips the verification pass", async () => {
+  let verifyCalls = 0;
+  const client = baseClient({
+    createPullRequestReview: async () => {},
+  });
+  await reviewPullRequest({
+    client,
+    fullName: "gregnazario/example",
+    number: 7,
+    config: { ...config, verifyFindings: false },
+    runModel: async () =>
+      JSON.stringify({
+        summary: "Risk.",
+        findings: [
+          { severity: "High", path: "src/app.mjs", line: 4, side: "RIGHT", body: "Risky default." },
+        ],
+      }),
+    verifyModel: async () => {
+      verifyCalls += 1;
+      return "{}";
+    },
+    logger: { log() {}, error() {} },
+  });
+  assert.equal(verifyCalls, 0);
+});
+
+test("touched-file contents are embedded in the review bundle", async () => {
+  let bundle = "";
+  const client = baseClient({
+    getFileContents: async (_repo, path) =>
+      path === "src/app.mjs" ? "export function add(a, b) {\n  return a + b;\n}\n" : "",
+    createPullRequestReview: async () => {},
+  });
+  await reviewPullRequest({
+    client,
+    fullName: "gregnazario/example",
+    number: 7,
+    config: { ...config, fileContextBytes: 4096 },
+    runModel: async (reviewBundle) => {
+      bundle = reviewBundle;
+      return jsonReview();
+    },
+    verifyModel: confirmAll,
+    logger: { log() {}, error() {} },
+  });
+  assert.match(bundle, /<touched_files>/);
+  assert.match(bundle, /<file path="src\/app\.mjs">/);
+  assert.match(bundle, /return a \+ b;/);
+});
+
+test("huge diffs route to PI_MODELS_LARGE", async () => {
+  const seenLabels: string[] = [];
+  const bigDiff = `diff --git a/src/app.mjs b/src/app.mjs
+--- a/src/app.mjs
++++ b/src/app.mjs
+@@ -1,1 +1,2 @@
+ context
++${"x".repeat(600_000)}
+`;
+  const client = baseClient({
+    getPullRequestDiff: async () => bigDiff,
+    createPullRequestReview: async () => {},
+  });
+  await reviewPullRequest({
+    client,
+    fullName: "gregnazario/example",
+    number: 7,
+    config: {
+      ...config,
+      largeModels: [
+        { provider: "zai", model: "glm-4.7", thinking: "low", label: "zai/glm-4.7:low" },
+      ],
+    },
+    runModel: async (_bundle, modelSpec) => {
+      seenLabels.push(modelSpec.label);
+      return jsonReview();
+    },
+    verifyModel: confirmAll,
+    logger: { log() {}, error() {} },
+  });
+  assert.deepEqual(seenLabels, ["zai/glm-4.7:low"]);
 });

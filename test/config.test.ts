@@ -23,3 +23,21 @@ test("review config reads the bot login with a hedgehog default", () => {
   assert.equal(loadReviewConfig({}).botLogin, "hedgehog-pr-bot");
   assert.equal(loadReviewConfig({ BOT_LOGIN: "MyReviewer[Bot]" }).botLogin, "myreviewer");
 });
+
+test("parses quality knobs: large models, file budget, verification", () => {
+  const base = loadReviewConfig({});
+  assert.equal(base.largeModels?.length ?? 0, 0);
+  assert.equal(base.fileContextBytes, 64 * 1024);
+  assert.equal(base.verifyFindings, true);
+  assert.equal(loadReviewConfig({ REVIEW_VERIFY: "false" }).verifyFindings, false);
+
+  const withLarge = loadReviewConfig({
+    PI_MODELS: "zai/glm-5.3:high",
+    PI_MODELS_LARGE: "zai/glm-4.7:low",
+  });
+  assert.deepEqual(
+    withLarge.largeModels?.map((spec) => spec.label),
+    ["zai/glm-4.7:low"],
+  );
+  assert.notEqual(withLarge.fingerprint, base.fingerprint);
+});

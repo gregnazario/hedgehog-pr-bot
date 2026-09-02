@@ -186,6 +186,14 @@ export class GitHubClient {
     return this.paginatedList(`/repos/${repoPath(fullName)}/issues/${number}/comments`);
   }
 
+  getFileContents(fullName: string, path: string, ref: string): Promise<string> {
+    const encoded = path.split("/").map(encodeURIComponent).join("/");
+    return this.request<string>(
+      `/repos/${repoPath(fullName)}/contents/${encoded}?ref=${encodeURIComponent(ref)}`,
+      { accept: "application/vnd.github.raw", responseType: "text" },
+    );
+  }
+
   async getPullRequestDiff(fullName: string, number: number): Promise<string> {
     try {
       return await this.request<string>(`/repos/${repoPath(fullName)}/pulls/${number}`, {
