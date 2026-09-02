@@ -130,7 +130,7 @@ export function buildReviewBody({
   /** Accepted for call-site convenience; the count is not rendered. */
   commentCount?: number;
 }): string {
-  const piVersion = process.env.PI_VERSION || "0.84.2";
+  const piVersion = process.env.PI_VERSION || "0.84.4";
   const footer = `\n\n---\n<sub>Reviewed ${shortSha(headSha)} with Pi ${piVersion} using ${modelLabels}.</sub>`;
   const hasFindings = unmapped.length > 0 || overflow.length > 0 || severities.length > 0;
   const modelSummary = String(summary ?? "").trim();

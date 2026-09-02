@@ -43,7 +43,7 @@ jobs:
           git config user.email "${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com"
           BRANCH="chore/pi-${LATEST}"
           git checkout -b "$BRANCH"
-          sed -i "s/$CURRENT/$LATEST/g" Dockerfile README.md
+          sed -i "s/$CURRENT/$LATEST/g" Dockerfile README.md src/review-format.ts
           git commit -am "Update Pi to $LATEST"
           git push origin "$BRANCH"
           gh pr create \
