@@ -9,6 +9,7 @@ import { applyIgnoreJob } from "./ignore.ts";
 import { makeJsonLogger } from "./logging.ts";
 import { loadIgnoreMemory } from "./memory.ts";
 import { createMetrics, type Metrics } from "./metrics.ts";
+import { notifyReview, severityCounts } from "./notify.ts";
 import { cancelQueuedProgress, prepareAcceptedJob, startQueuedProgress } from "./progress.ts";
 import { SerialDedupeQueue } from "./queue.ts";
 import { reviewPullRequest } from "./reviewer.ts";
@@ -85,6 +86,19 @@ export function createAppServer({
         logger,
       });
       metrics.inc("job_results_total", { result: result.status });
+      if (reviewConfig.notifyWebhook) {
+        notifyReview(reviewConfig.notifyWebhook, {
+          type: "review",
+          repository: job.fullName,
+          pull_request: job.number,
+          head: prepared.headSha ?? job.headSha ?? "",
+          status: result.status,
+          event: result.status === "reviewed" ? result.event : undefined,
+          severities: severityCounts(result.status === "reviewed" ? result.severities : []),
+        }).then((delivered) => {
+          if (!delivered) logger.error(`Could not deliver review notification for ${job.key}`);
+        });
+      }
     },
     {
       onError: (error, job) => logger.error(`Review failed for ${job.key}: ${errorMessage(error)}`),

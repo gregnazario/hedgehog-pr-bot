@@ -53,7 +53,7 @@ export async function reviewPullRequest({
   force = false,
   checkRunId,
   eyesReactionId,
-  runModel = runPi,
+  runModel = (bundle, modelSpec) => runPi(bundle, modelSpec, config.piTimeoutMs ?? 600_000),
   ignoredFingerprints = new Set<string>(),
   logger = console,
 }: ReviewRequest): Promise<ReviewResult> {
@@ -296,7 +296,11 @@ export function buildReviewBundle(
   return parts.join("\n");
 }
 
-export function runPi(reviewBundle: string, modelSpec: ModelSpec): Promise<string> {
+export function runPi(
+  reviewBundle: string,
+  modelSpec: ModelSpec,
+  timeoutMs = 10 * 60_000,
+): Promise<string> {
   const systemPrompt = [
     "You are a meticulous pull-request reviewer.",
     "Find concrete issues in security, correctness, performance, reliability, and maintainability.",
@@ -351,7 +355,12 @@ export function runPi(reviewBundle: string, modelSpec: ModelSpec): Promise<strin
     out.on("data", (chunk) => (stdout += chunk));
     err.on("data", (chunk) => (stderr += chunk));
     child.on("error", reject);
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      reject(new Error(`Pi timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
     child.on("close", (code) => {
+      clearTimeout(timer);
       if (code !== 0) {
         reject(new Error(stderr.trim() || `Pi exited with status ${code}`));
         return;
