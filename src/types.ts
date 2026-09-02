@@ -26,6 +26,12 @@ export interface ReviewConfig {
   memoryPath?: string;
   /** Wall-clock cap for one model run; protects the serial queue. */
   piTimeoutMs?: number;
+  /** Replaces PI_MODELS for diffs above LARGE_DIFF_THRESHOLD. */
+  largeModels?: ModelSpec[];
+  /** Bytes of touched-file contents embedded in the bundle; 0 disables. */
+  fileContextBytes?: number;
+  /** Second model pass that verifies Critical/High findings. */
+  verifyFindings?: boolean;
   /** Optional URL notified with each review result; empty disables. */
   notifyWebhook?: string;
   maxDiffChars: number;
@@ -202,6 +208,7 @@ export interface ReviewerClient {
     payload: ReviewSubmission,
   ): Promise<{ id?: number } | null | undefined>;
   listUnresolvedHedgehogThreads?(fullName: string, number: number): Promise<HedgehogThread[]>;
+  getFileContents?(fullName: string, path: string, ref: string): Promise<string>;
   createPullRequestReviewComment?(
     fullName: string,
     number: number,
