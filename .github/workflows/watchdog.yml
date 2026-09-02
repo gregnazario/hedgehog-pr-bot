@@ -51,18 +51,20 @@ jobs:
           PROBE_AT: ${{ steps.probe.outputs.probe_at }}
         run: |
           set -u
-          ISSUE=$(gh issue list --state open --search "in:title Watchdog: bot endpoint failing" \
+          ISSUE=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open \
+            --search "in:title Watchdog: bot endpoint failing" \
             --json number --jq '.[0].number // empty')
           if [ -n "$REASON" ]; then
             BODY="Watchdog failure at $PROBE_AT: $REASON."
             if [ -n "$ISSUE" ]; then
-              gh issue comment "$ISSUE" --body "$BODY"
+              gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body "$BODY"
             else
               gh issue create \
+                --repo "$GITHUB_REPOSITORY" \
                 --title "Watchdog: bot endpoint failing" \
                 --body "$BODY See https://github.com/gregnazario/hedgehog-pr-bot/actions/workflows/watchdog.yml for the probe history."
             fi
           elif [ -n "$ISSUE" ]; then
-            gh issue comment "$ISSUE" --body "Recovered at $PROBE_AT."
-            gh issue close "$ISSUE"
+            gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body "Recovered at $PROBE_AT."
+            gh issue close "$ISSUE" --repo "$GITHUB_REPOSITORY"
           fi
