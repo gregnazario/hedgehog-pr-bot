@@ -120,6 +120,9 @@ and key files are ignored by Git. `.env.example` contains placeholders only.
 | `GITHUB_WEBHOOK_SECRET` | required | High-entropy webhook signing secret |
 | `ZAI_API_KEY` | required for default | Z.AI Coding Plan credential used by Pi |
 | `PI_MODELS` | `zai/glm-5.3:high` | Comma-separated `provider/model[:thinking]` reviewers |
+| `PI_MODELS_LARGE` | unset | Reviewers used for diffs above 500k characters (long-context or cheaper models); participates in the review fingerprint |
+| `REVIEW_VERIFY` | `true` | Second model pass that confirms, downgrades, or drops Critical/High findings before posting; `false` disables |
+| `FILE_CONTEXT_BYTES` | `65536` | Bytes of complete touched-file contents embedded in the prompt; `0` disables |
 | `PR_AUTHOR` | `gregnazario` | Only review PRs opened by this GitHub user |
 | `PR_AUTHORS` | `PR_AUTHOR` | Comma-separated list of reviewed authors (maintainer mode) |
 | `REVIEW_MEMORY_PATH` | unset | File persisting `/ignore` fingerprints; unset disables the memory |

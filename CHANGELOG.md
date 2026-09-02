@@ -8,6 +8,14 @@ All notable changes to hedgehog-pr-bot are documented here. The format follows
 
 ### Added
 
+- `REVIEW_VERIFY` (default on): a second model pass verifies Critical/High
+  findings against the diff before posting — confirming, downgrading, or
+  dropping them; verification failures keep the original findings.
+- `FILE_CONTEXT_BYTES` (default 64 KiB): complete contents of touched files are
+  embedded in the review prompt so findings can reference unchanged code.
+- `PI_MODELS_LARGE`: diffs above 500k characters route to a separate model list
+  (long-context or cheaper); it participates in the review fingerprint.
+
 - `PI_TIMEOUT_MS` caps each model run (default ten minutes) so a hung Pi process
   cannot block the serial review queue until restart.
 - GitHub requests retry `429`/`5xx` responses up to twice, honoring `Retry-After`.
