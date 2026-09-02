@@ -26,11 +26,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -eu
-          LATEST=$(gh api repos/earendil-works/pi-coding-agent/releases/latest \
-            --jq .tag_name | sed 's/^v//')
+          # The npm registry is authoritative for the installed package version.
+          LATEST=$(curl -sf https://registry.npmjs.org/@earendil-works/pi-coding-agent/latest \
+            | jq -r .version)
           CURRENT=$(grep -oP 'ARG PI_VERSION=\K[0-9.]+' Dockerfile)
           echo "latest=$LATEST current=$CURRENT"
-          if [ -z "$LATEST" ] || [ "$LATEST" = "$CURRENT" ]; then
+          if ! printf '%s' "$LATEST" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "Could not determine the latest Pi version; skipping."
+            exit 0
+          fi
+          if [ "$LATEST" = "$CURRENT" ]; then
             echo "Pi pin is up to date."
             exit 0
           fi
