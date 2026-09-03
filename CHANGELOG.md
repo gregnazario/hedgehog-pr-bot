@@ -6,20 +6,19 @@ All notable changes to hedgehog-pr-bot are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `bun run coverage` runs the suite with Node's built-in coverage (no extra
+  dependencies); CI prints the report on every run and enforces floors of 85%
+  lines / 75% branches / 80% functions. The baseline and known-gap notes live
+  in the README's Development section.
+
 ### Fixed
 
 - Documented and fixed the App permission for resolving review threads: GitHub
   requires Contents **write** for the `resolveReviewThread` mutation (not just
   Pull requests write), so thread resolution was silently failing everywhere;
   the App manifest and all permission tables now specify Contents read & write.
-
-## [Unreleased]
-
-### Added
-
-- `bun run coverage` runs the suite with Node's built-in coverage (no extra
-  dependencies); CI prints the report on every run. Baseline: ~88% lines,
-  ~79% branches, with the known gaps documented in the PR.
 
 - `focus:` in `.hedgehog.yml` narrows reviews to a fixed category taxonomy
   (security, correctness, performance, reliability, maintainability, tests,

@@ -236,7 +236,7 @@ Node test suite:
 ```sh
 bun install        # dev-only: typescript, @types/node, @biomejs/biome
 bun run test       # node --test suite
-bun run coverage   # same suite with Node's built-in coverage report
+bun run coverage   # suite + Node coverage report; fails under 85% lines / 75% branches / 80% functions
 bun run typecheck  # tsc --noEmit over src, test, and scripts
 bun run lint       # biome check: formatting, import order, lint rules
 bun run format     # biome format --write
@@ -245,3 +245,11 @@ bun run fix        # biome check --write: format + safe lint/import fixes
 
 The Compose image installs no project dependencies at all; it copies `src/` and
 `scripts/` and runs `node src/server.ts` directly.
+
+Coverage baseline (2026-09): ~88% lines / ~79% branches / ~83% functions.
+Strongest: signals, webhook, metrics, memory, notify. Known gaps: the
+`/describe` and `/ignore` queue branches and startup/shutdown in `server.ts`,
+the thin REST wrappers in `github.ts`, and the real `spawnPi` subprocess body —
+paths exercised in production rather than the suite, and the natural targets
+for future integration tests. Raise the floors in `package.json` as they fill
+in.
