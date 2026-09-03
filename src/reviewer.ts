@@ -67,10 +67,7 @@ export async function reviewPullRequest({
   reviewFingerprint,
   logger = console,
 }: ReviewRequest): Promise<ReviewResult> {
-  const run =
-    runModel ??
-    ((bundle, modelSpec) =>
-      runPi(bundle, modelSpec, config.piTimeoutMs ?? 600_000, repoConfig?.focus));
+  const run = runModel ?? defaultRunModel(config, repoConfig);
   const verify =
     verifyModel ??
     ((bundle, modelSpec) => runPiVerify(bundle, modelSpec, config.piTimeoutMs ?? 600_000));
@@ -458,6 +455,16 @@ export function runPi(
   focus?: readonly string[],
 ): Promise<string> {
   return spawnPi(buildReviewSystemPrompt(focus), reviewBundle, modelSpec, timeoutMs);
+}
+
+/** The production model runner: timeout and repo focus from config. */
+export function defaultRunModel(
+  config: ReviewConfig,
+  repoConfig: RepoConfig | null,
+  runPiImpl: typeof runPi = runPi,
+): (bundle: string, modelSpec: ModelSpec) => Promise<string> {
+  return (bundle, modelSpec) =>
+    runPiImpl(bundle, modelSpec, config.piTimeoutMs ?? 600_000, repoConfig?.focus);
 }
 
 /** Drafts a pull-request description from the diff (used by /describe). */

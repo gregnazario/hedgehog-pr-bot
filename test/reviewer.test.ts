@@ -5,6 +5,7 @@ import {
   buildPiEnvironment,
   buildReviewBundle,
   buildReviewSystemPrompt,
+  defaultRunModel,
   reviewPullRequest,
 } from "../src/reviewer.ts";
 import type { CheckRunUpdate, ReviewerClient } from "../src/types.ts";
@@ -1050,4 +1051,25 @@ test("buildReviewSystemPrompt keeps the default line and glosses focused lists",
   assert.match(focused, /tests \(missing or weak coverage/);
   assert.match(focused, /unless they are Critical/);
   assert.doesNotMatch(focused, /maintainability/);
+});
+
+test("defaultRunModel threads repo focus and timeout into runPi", async () => {
+  const calls: any[] = [];
+  const runner = defaultRunModel(
+    { ...config, piTimeoutMs: 1234 },
+    { focus: ["security"] },
+    async (_bundle, _spec, timeoutMs, focus) => {
+      calls.push({ timeoutMs, focus });
+      return "{}";
+    },
+  );
+  await runner("bundle", config.models[0]);
+  assert.deepEqual(calls, [{ timeoutMs: 1234, focus: ["security"] }]);
+
+  const unfocused: any[] = [];
+  await defaultRunModel({ ...config, piTimeoutMs: 99 }, null, async (_b, _s, timeoutMs, focus) => {
+    unfocused.push({ timeoutMs, focus });
+    return "{}";
+  })("bundle", config.models[0]);
+  assert.deepEqual(unfocused, [{ timeoutMs: 99, focus: undefined }]);
 });
