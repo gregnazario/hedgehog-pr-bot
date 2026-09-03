@@ -301,15 +301,19 @@ verify: false
 instructions: |
   Flag client-only hooks; we use server components.
 walkthrough: true
-models: zai/glm-4.7:low</code></pre>
+models: zai/glm-4.7:low
+focus: [security, correctness]</code></pre>
       <p>
         <code>skip</code> silences the repository; <code>ignore_paths</code> drops
         findings under path prefixes; <code>min_severity</code> sets a posting floor;
         <code>verify</code> overrides the verification pass; <code>instructions</code>
         feeds maintainer guidance into every review; <code>walkthrough</code> adds a
         file-by-file summary to the review body; <code>models</code> overrides the
-        server's model list (and the review fingerprint). Unknown keys and invalid
-        values are ignored.
+        server's model list (and the review fingerprint); <code>focus</code>
+        narrows the review to a fixed set of categories — security, correctness,
+        performance, reliability, maintainability, tests, accessibility — with a
+        glossed, scoped prompt (out-of-focus Criticals still surface). Unknown
+        keys and invalid values are ignored.
       </p>
 
       <h2>Observability</h2>

@@ -3,6 +3,19 @@ import type { ModelSpec, Severity } from "./types.ts";
 
 const SEVERITIES = new Set(["Critical", "High", "Medium", "Low"]);
 
+/** Fixed review-focus taxonomy; `focus:` in .hedgehog.yml selects a subset. */
+export const REVIEW_FOCUS_GLOSSES: Readonly<Record<string, string>> = {
+  security: "injection, authorization, authentication, secret handling, unsafe trust boundaries",
+  correctness: "logic bugs, edge cases, error handling, race conditions",
+  performance: "algorithmic complexity, unnecessary work, memory growth, N+1 queries",
+  reliability: "failure handling, retries, timeouts, data consistency",
+  maintainability: "dead code, unclear naming, duplicated logic, missing error context",
+  tests: "missing or weak coverage for the changed behavior",
+  accessibility: "semantic markup, keyboard navigation, screen-reader labels, contrast",
+};
+
+const FOCUS_NAMES = new Set(Object.keys(REVIEW_FOCUS_GLOSSES));
+
 export interface RepoConfig {
   /** Silence hedgehog on this repository entirely. */
   skip?: boolean;
@@ -18,6 +31,8 @@ export interface RepoConfig {
   walkthrough?: boolean;
   /** Per-repository model list; changes the review fingerprint. */
   models?: ModelSpec[];
+  /** Review categories to focus on; replaces the default category list. */
+  focus?: string[];
 }
 
 /**
@@ -125,6 +140,14 @@ function applyValue(config: RepoConfig, key: string, value: string[] | boolean |
   }
   if (key === "min_severity" && typeof value === "string" && SEVERITIES.has(value)) {
     config.minSeverity = value as Severity;
+    return;
+  }
+  if (key === "focus") {
+    const list = (Array.isArray(value) ? value : [String(value)])
+      .map((entry) => entry.trim().toLowerCase())
+      .filter((entry) => FOCUS_NAMES.has(entry));
+    const unique = [...new Set(list)];
+    if (unique.length > 0) config.focus = unique;
     return;
   }
   if (key === "models" && typeof value === "string" && value.trim()) {

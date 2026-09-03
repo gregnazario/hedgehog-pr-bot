@@ -201,11 +201,19 @@ walkthrough: true
 
 # Per-repository model list (changes the review fingerprint).
 models: zai/glm-4.7:low
+
+# Review only these categories (default: security, correctness,
+# performance, reliability, maintainability).
+focus: [security, correctness]
 ```
 
 Missing files, unknown keys, and invalid values are ignored, so the schema can
 grow without breaking old checkouts. The posting filters do not change the
-review fingerprint; `models` does, so changing it re-reviews open PRs.
+review fingerprint; `models` does, so changing it re-reviews open PRs. `focus`
+accepts: security, correctness, performance, reliability, maintainability,
+tests, accessibility. Focused repos get a glossed, scoped prompt — issues
+outside the focus are still reported when Critical — and `instructions` remains
+the escape hatch for anything the taxonomy does not express.
 
 Comment `/describe` on a PR to have hedgehog draft a title and description from
 the diff and post them as a comment to copy into the PR. For automatic TLS on a spare domain, run

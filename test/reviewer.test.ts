@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { findingFingerprint } from "../src/memory.ts";
-import { buildPiEnvironment, buildReviewBundle, reviewPullRequest } from "../src/reviewer.ts";
+import {
+  buildPiEnvironment,
+  buildReviewBundle,
+  buildReviewSystemPrompt,
+  defaultRunModel,
+  reviewPullRequest,
+} from "../src/reviewer.ts";
 import type { CheckRunUpdate, ReviewerClient } from "../src/types.ts";
 
 const config = {
@@ -1033,4 +1039,37 @@ test("repo instructions land in the bundle and walkthroughs land in the body", a
   assert.match(seenBundle, /Maintainer guidance:\nFlag client-only hooks\./);
   assert.match(seenBundle, /"walkthrough" field/);
   assert.match(posted.body, /### Walkthrough\n\n- \*\*src\/app\.mjs\*\*/);
+});
+
+test("buildReviewSystemPrompt keeps the default line and glosses focused lists", () => {
+  const def = buildReviewSystemPrompt();
+  assert.match(def, /security, correctness, performance, reliability, and maintainability\./);
+  assert.doesNotMatch(def, /review areas/);
+
+  const focused = buildReviewSystemPrompt(["security", "tests"]);
+  assert.match(focused, /review areas: security \(injection, authorization/);
+  assert.match(focused, /tests \(missing or weak coverage/);
+  assert.match(focused, /unless they are Critical/);
+  assert.doesNotMatch(focused, /maintainability/);
+});
+
+test("defaultRunModel threads repo focus and timeout into runPi", async () => {
+  const calls: any[] = [];
+  const runner = defaultRunModel(
+    { ...config, piTimeoutMs: 1234 },
+    { focus: ["security"] },
+    async (_bundle, _spec, timeoutMs, focus) => {
+      calls.push({ timeoutMs, focus });
+      return "{}";
+    },
+  );
+  await runner("bundle", config.models[0]);
+  assert.deepEqual(calls, [{ timeoutMs: 1234, focus: ["security"] }]);
+
+  const unfocused: any[] = [];
+  await defaultRunModel({ ...config, piTimeoutMs: 99 }, null, async (_b, _s, timeoutMs, focus) => {
+    unfocused.push({ timeoutMs, focus });
+    return "{}";
+  })("bundle", config.models[0]);
+  assert.deepEqual(unfocused, [{ timeoutMs: 99, focus: undefined }]);
 });
