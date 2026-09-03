@@ -236,6 +236,7 @@ Node test suite:
 ```sh
 bun install        # dev-only: typescript, @types/node, @biomejs/biome
 bun run test       # node --test suite
+bun run coverage   # same suite with Node's built-in coverage report
 bun run typecheck  # tsc --noEmit over src, test, and scripts
 bun run lint       # biome check: formatting, import order, lint rules
 bun run format     # biome format --write
