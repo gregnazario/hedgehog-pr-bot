@@ -11,6 +11,7 @@
     "start": "node src/server.ts",
     "scan": "node scripts/review-prs.ts",
     "test": "node --test \"test/*.test.ts\"",
+    "coverage": "node --test --experimental-test-coverage \"test/*.test.ts\"",
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
     "format": "biome format --write .",

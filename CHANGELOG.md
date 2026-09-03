@@ -17,6 +17,10 @@ All notable changes to hedgehog-pr-bot are documented here. The format follows
 
 ### Added
 
+- `bun run coverage` runs the suite with Node's built-in coverage (no extra
+  dependencies); CI prints the report on every run. Baseline: ~88% lines,
+  ~79% branches, with the known gaps documented in the PR.
+
 - `focus:` in `.hedgehog.yml` narrows reviews to a fixed category taxonomy
   (security, correctness, performance, reliability, maintainability, tests,
   accessibility) with a glossed, scoped system prompt; out-of-focus issues are
