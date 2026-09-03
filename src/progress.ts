@@ -1,4 +1,4 @@
-import { reviewMarker } from "./config.ts";
+import { repoModelsFingerprint, reviewMarker } from "./config.ts";
 import { errorMessage } from "./errors.ts";
 import { GitHubHttpError } from "./github.ts";
 import { parseRepoConfig, type RepoConfig } from "./repo-config.ts";
@@ -290,6 +290,8 @@ export interface PreparedJob {
   checkRunId?: number;
   /** Parsed .hedgehog.yml from this repository, when present. */
   repoConfig?: RepoConfig | null;
+  /** Server fingerprint folded with per-repo models, when configured. */
+  fingerprint?: string;
 }
 
 export async function prepareAcceptedJob<T extends PullRequestRef & { checkRunId?: number }>(
@@ -309,8 +311,10 @@ export async function prepareAcceptedJob<T extends PullRequestRef & { checkRunId
   logger: Logger = console,
 ): Promise<(T & PreparedJob) | null> {
   const pullRequest = await client.getPullRequest(job.fullName, job.number);
-  const headShaForConfig = pullRequest.head?.sha;
-  const repoConfig = await loadRepoConfig(client, job.fullName, headShaForConfig, logger);
+  // Config is read from the PR base branch, never the reviewed head: PR
+  // authors must not steer their own review via instructions or models.
+  const configSha = pullRequest.base?.sha ?? pullRequest.head?.sha;
+  const repoConfig = await loadRepoConfig(client, job.fullName, configSha, logger);
   if (repoConfig?.skip) {
     await abandonQueuedProgress(client, {
       fullName: job.fullName,
@@ -354,11 +358,12 @@ export async function prepareAcceptedJob<T extends PullRequestRef & { checkRunId
     });
     return null;
   }
+  const effectiveFingerprint = repoModelsFingerprint(fingerprint ?? "", repoConfig?.models ?? []);
   if (
     reviews &&
     headSha &&
     fingerprint &&
-    reviewHasCurrentMarker(reviews, reviewMarker(headSha, fingerprint))
+    reviewHasCurrentMarker(reviews, reviewMarker(headSha, effectiveFingerprint))
   ) {
     await abandonQueuedProgress(client, {
       fullName: job.fullName,
@@ -376,7 +381,7 @@ export async function prepareAcceptedJob<T extends PullRequestRef & { checkRunId
     botLogin,
     logger,
   });
-  return { ...job, headSha, ...progress, repoConfig };
+  return { ...job, headSha, ...progress, repoConfig, fingerprint: effectiveFingerprint };
 }
 
 async function loadRepoConfig(

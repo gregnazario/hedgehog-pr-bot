@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { loadReviewConfig, parseModelSpecs, reviewMarker } from "../src/config.ts";
+import {
+  loadReviewConfig,
+  parseModelSpecs,
+  repoModelsFingerprint,
+  reviewMarker,
+} from "../src/config.ts";
 
 test("parses multiple Pi model specifications", () => {
   assert.deepEqual(parseModelSpecs("zai/glm-5.3:high,openai/gpt-5:medium"), [
@@ -40,4 +45,12 @@ test("parses quality knobs: large models, file budget, verification", () => {
     ["zai/glm-4.7:low"],
   );
   assert.notEqual(withLarge.fingerprint, base.fingerprint);
+});
+
+test("repoModelsFingerprint folds per-repo models, keeps base otherwise", () => {
+  const base = "abc123base";
+  assert.equal(repoModelsFingerprint(base, []), base);
+  const models = [{ provider: "zai", model: "glm-4.7", thinking: "low", label: "zai/glm-4.7:low" }];
+  assert.notEqual(repoModelsFingerprint(base, models), base);
+  assert.equal(repoModelsFingerprint(base, models), repoModelsFingerprint(base, models));
 });

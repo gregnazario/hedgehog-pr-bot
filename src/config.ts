@@ -55,6 +55,7 @@ export function loadReviewConfig(env: EnvSource = process.env): ReviewConfig {
     memoryPath: env.REVIEW_MEMORY_PATH || "",
     piTimeoutMs: positiveInteger(env.PI_TIMEOUT_MS, 600_000),
     notifyWebhook: env.NOTIFY_WEBHOOK || "",
+    notifyWebhookFormat: env.NOTIFY_WEBHOOK_FORMAT === "slack" ? "slack" : "json",
     maxDiffChars: positiveInteger(env.MAX_DIFF_CHARS, 4_000_000),
     models,
     largeModels,
@@ -65,6 +66,16 @@ export function loadReviewConfig(env: EnvSource = process.env): ReviewConfig {
       .digest("hex")
       .slice(0, 12),
   };
+}
+
+/** Repos with their own model list get their own marker space, so a config
+ * change re-reviews open PRs; repos without one keep the server fingerprint. */
+export function repoModelsFingerprint(base: string, models: readonly ModelSpec[]): string {
+  if (models.length === 0) return base;
+  return createHash("sha256")
+    .update(`${base}\0${models.map((spec) => spec.label).join(",")}`)
+    .digest("hex")
+    .slice(0, 12);
 }
 
 export function loadPrivateKey(env: EnvSource): string {

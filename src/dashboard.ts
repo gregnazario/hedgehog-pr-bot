@@ -1,4 +1,6 @@
 import { createHash, timingSafeEqual } from "node:crypto";
+import { appendFile, mkdir, readFile } from "node:fs/promises";
+import { dirname } from "node:path";
 import type { Severity } from "./types.ts";
 
 export interface DashboardJob {
@@ -17,15 +19,48 @@ const MAX_JOBS = 25;
 export class Dashboard {
   private readonly jobs: DashboardJob[] = [];
   private readonly tokenHash: Buffer | null;
+  private readonly persistPath: string;
 
-  constructor(token: string | undefined) {
+  private readonly directoryReady: Promise<void>;
+
+  constructor(token: string | undefined, persistPath = "") {
     // Store a hash so the secret never sits in memory next to render paths.
     this.tokenHash = token ? createHash("sha256").update(token).digest() : null;
+    this.persistPath = persistPath;
+    this.directoryReady = persistPath
+      ? mkdir(dirname(persistPath), { recursive: true }).then(
+          () => this.restore(),
+          () => {},
+        )
+      : Promise.resolve();
+  }
+
+  private async restore(): Promise<void> {
+    if (!this.persistPath) return;
+    try {
+      const raw = await readFile(this.persistPath, "utf8");
+      for (const line of raw.trimEnd().split("\n").slice(-MAX_JOBS)) {
+        if (!line.trim()) continue;
+        try {
+          const job = JSON.parse(line) as unknown;
+          if (isDashboardJob(job)) this.jobs.push(job);
+        } catch {
+          // Skip corrupt lines; the dashboard is advisory.
+        }
+      }
+    } catch {
+      // No history yet.
+    }
   }
 
   recordJob(job: DashboardJob): void {
     this.jobs.push(job);
     if (this.jobs.length > MAX_JOBS) this.jobs.splice(0, this.jobs.length - MAX_JOBS);
+    if (this.persistPath) {
+      void this.directoryReady.then(() =>
+        appendFile(this.persistPath, `${JSON.stringify(job)}\n`, "utf8").catch(() => {}),
+      );
+    }
   }
 
   /** True when the request may see the dashboard (no token configured, or match). */
@@ -105,6 +140,19 @@ ${rows || '<tr><td colspan="6" class="muted">no reviews yet</td></tr>'}
 </body>
 </html>`;
   }
+}
+
+function isDashboardJob(value: unknown): value is DashboardJob {
+  if (!value || typeof value !== "object") return false;
+  const job = value as Record<string, unknown>;
+  return (
+    typeof job.at === "string" &&
+    typeof job.repository === "string" &&
+    typeof job.number === "number" &&
+    typeof job.head === "string" &&
+    typeof job.status === "string" &&
+    typeof job.durationMs === "number"
+  );
 }
 
 function severitySummary(severities: Partial<Record<Severity, number>>): string {

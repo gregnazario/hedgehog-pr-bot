@@ -979,3 +979,58 @@ test("repo config can disable the verification pass", async () => {
   });
   assert.equal(verifyCalls, 0);
 });
+
+test("repo config models override the server list", async () => {
+  const seenLabels: string[] = [];
+  const client = baseClient({
+    createPullRequestReview: async () => {},
+  });
+  await reviewPullRequest({
+    client,
+    fullName: "gregnazario/example",
+    number: 7,
+    config,
+    repoConfig: {
+      models: [{ provider: "zai", model: "glm-4.7", thinking: "low", label: "zai/glm-4.7:low" }],
+    },
+    runModel: async (_bundle, modelSpec) => {
+      seenLabels.push(modelSpec.label);
+      return jsonReview();
+    },
+    verifyModel: confirmAll,
+    logger: { log() {}, error() {} },
+  });
+  assert.deepEqual(seenLabels, ["zai/glm-4.7:low"]);
+});
+
+test("repo instructions land in the bundle and walkthroughs land in the body", async () => {
+  let seenBundle = "";
+  let posted: any;
+  const client = baseClient({
+    createPullRequestReview: async (_repo, _number, payload) => {
+      posted = payload;
+    },
+  });
+  await reviewPullRequest({
+    client,
+    fullName: "gregnazario/example",
+    number: 7,
+    config,
+    repoConfig: {
+      instructions: "Flag client-only hooks.",
+      walkthrough: true,
+    },
+    runModel: async (bundle) => {
+      seenBundle = bundle;
+      return JSON.stringify({
+        summary: "Checked.",
+        walkthrough: "- **src/app.mjs**: adds the VERSION export",
+        findings: [],
+      });
+    },
+    logger: { log() {}, error() {} },
+  });
+  assert.match(seenBundle, /Maintainer guidance:\nFlag client-only hooks\./);
+  assert.match(seenBundle, /"walkthrough" field/);
+  assert.match(posted.body, /### Walkthrough\n\n- \*\*src\/app\.mjs\*\*/);
+});

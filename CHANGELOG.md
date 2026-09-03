@@ -8,6 +8,16 @@ All notable changes to hedgehog-pr-bot are documented here. The format follows
 
 ### Added
 
+- `.hedgehog.yml` grew three knobs: `instructions` (maintainer guidance fed into
+  every review prompt), `walkthrough` (a file-by-file summary section in the review
+  body), and `models` (a per-repository model list that changes the review
+  fingerprint so config changes re-review open PRs).
+- `/describe` drafts a pull-request title and description from the diff and posts
+  them as a copyable comment.
+- `NOTIFY_WEBHOOK_FORMAT=slack` wraps review notifications as `{text}` for Slack
+  incoming webhooks.
+- `REVIEW_HISTORY_PATH` persists dashboard history across restarts as JSONL.
+
 - Per-repository configuration via `.hedgehog.yml`: `skip`, `ignore_paths`,
   `min_severity`, and `verify` shape what gets posted per repo without touching
   server environment variables.

@@ -130,6 +130,8 @@ and key files are ignored by Git. `.env.example` contains placeholders only.
 | `PI_TIMEOUT_MS` | `600000` | Wall-clock cap for one model run; protects the serial queue |
 | `NOTIFY_WEBHOOK` | unset | URL posted each review result (Slack/Discord/generic) |
 | `DASHBOARD_TOKEN` | unset | When set, `/dashboard` requires this token (`?token=` or Bearer) |
+| `REVIEW_HISTORY_PATH` | unset | JSONL file keeping dashboard history across restarts |
+| `NOTIFY_WEBHOOK_FORMAT` | `json` | `slack` wraps notifications as `{text}` for Slack incoming webhooks |
 | `PI_VERSION` | `0.84.4` | Pi version stamped into review footers |
 | `BOT_LOGIN` | `hedgehog-pr-bot` | The App's bot account slug; set it when self-hosting under a different App name |
 | `MAX_DIFF_CHARS` | `4000000` | Maximum diff characters sent to each model |
@@ -188,11 +190,24 @@ min_severity: Medium
 
 # Override the server's REVIEW_VERIFY for this repository.
 verify: false
+
+# Maintainer review guidance, included verbatim in the model prompt.
+instructions: |
+  We use React 19 server components; flag client-only hooks.
+
+# Ask for a file-by-file walkthrough section in each review.
+walkthrough: true
+
+# Per-repository model list (changes the review fingerprint).
+models: zai/glm-4.7:low
 ```
 
 Missing files, unknown keys, and invalid values are ignored, so the schema can
-grow without breaking old checkouts. These settings shape what gets posted; they
-do not change the review fingerprint. For automatic TLS on a spare domain, run
+grow without breaking old checkouts. The posting filters do not change the
+review fingerprint; `models` does, so changing it re-reviews open PRs.
+
+Comment `/describe` on a PR to have hedgehog draft a title and description from
+the diff and post them as a comment to copy into the PR. For automatic TLS on a spare domain, run
 `docker compose --profile tls up -d` with `DOMAIN` set — a Caddy sidecar handles
 certificates. A ready-made image is published to
 `ghcr.io/gregnazario/hedgehog-pr-bot:latest` on every push to main. Self-hosters can

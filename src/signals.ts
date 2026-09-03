@@ -33,6 +33,10 @@ export function isIgnoreCommand(body: unknown): boolean {
   return firstToken(body) === "/ignore";
 }
 
+export function isDescribeCommand(body: unknown): boolean {
+  return firstToken(body) === "/describe";
+}
+
 /** Accepts one author or a list; logins are compared case-insensitively. */
 export function isReviewedAuthor(login: unknown, authors: string | readonly string[]): boolean {
   const name = String(login ?? "").toLowerCase();

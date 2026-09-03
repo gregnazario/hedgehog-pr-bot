@@ -110,6 +110,7 @@ test("accepted pull_request webhook opens a queued check before the review runs"
       listPullRequestReviews: async () => [],
       getPullRequestDiff: async () => "",
       createPullRequestReview: async () => {},
+      createIssueComment: async () => {},
       updateCheckRun: async (_repo, _id, payload) => updates.push(payload),
       deleteIssueReaction: async () => {},
     }),
@@ -189,6 +190,7 @@ test("does not start progress when this head is already reviewed", async (t) => 
       ],
       getPullRequestDiff: async () => "",
       createPullRequestReview: async () => {},
+      createIssueComment: async () => {},
     }),
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
@@ -243,6 +245,7 @@ test("does not start progress for skip-review PRs", async (t) => {
       listPullRequestReviews: async () => [],
       getPullRequestDiff: async () => "",
       createPullRequestReview: async () => {},
+      createIssueComment: async () => {},
     }),
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));

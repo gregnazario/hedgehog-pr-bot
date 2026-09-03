@@ -271,6 +271,10 @@ ANTHROPIC_API_KEY=…</code></pre>
           comment immediately so you know it landed.
         </li>
         <li>
+          <code>/describe</code> — comment this on your PR to get a drafted title and
+          description from the diff, posted as a comment to copy into the PR.
+        </li>
+        <li>
           <code>/ignore</code> — reply this under any hedgehog comment to mute that finding:
           the thread resolves, the reply gets 👍, and future passes drop matching findings
           (when <code>REVIEW_MEMORY_PATH</code> is set).
@@ -290,12 +294,19 @@ ANTHROPIC_API_KEY=…</code></pre>
       <pre><code>skip: false
 ignore_paths: [dist, vendor]
 min_severity: Medium
-verify: false</code></pre>
+verify: false
+instructions: |
+  Flag client-only hooks; we use server components.
+walkthrough: true
+models: zai/glm-4.7:low</code></pre>
       <p>
         <code>skip</code> silences the repository; <code>ignore_paths</code> drops
         findings under path prefixes; <code>min_severity</code> sets a posting floor;
-        <code>verify</code> overrides the verification pass. Unknown keys and invalid
-        values are ignored, and none of these change the review fingerprint.
+        <code>verify</code> overrides the verification pass; <code>instructions</code>
+        feeds maintainer guidance into every review; <code>walkthrough</code> adds a
+        file-by-file summary to the review body; <code>models</code> overrides the
+        server's model list (and the review fingerprint). Unknown keys and invalid
+        values are ignored.
       </p>
 
       <h2>Observability</h2>

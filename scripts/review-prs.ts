@@ -54,6 +54,7 @@ for (const repository of repositories.sort((a, b) => a.full_name.localeCompare(b
         checkRunId: prepared.checkRunId,
         eyesReactionId: prepared.eyesReactionId,
         repoConfig: prepared.repoConfig,
+        reviewFingerprint: prepared.fingerprint,
       });
       if (result.status === "reviewed") reviewed += 1;
     } catch (error) {
