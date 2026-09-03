@@ -3,6 +3,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { pathToFileURL } from "node:url";
 import { loadPrivateKey, loadReviewConfig, positiveInteger } from "./config.ts";
+import { Dashboard } from "./dashboard.ts";
 import { errorMessage } from "./errors.ts";
 import { GitHubClient, InstallationTokenProvider } from "./github.ts";
 import { applyIgnoreJob } from "./ignore.ts";
@@ -31,6 +32,7 @@ export interface AppServerOptions {
   reviewConfig: ReviewConfig;
   logger?: Logger;
   metrics?: Metrics;
+  dashboardToken?: string;
   createClient?: (token: string) => AppClient;
 }
 
@@ -40,9 +42,13 @@ export function createAppServer({
   reviewConfig,
   logger = console,
   metrics = createMetrics(),
+  dashboardToken,
   createClient = (token) => new GitHubClient(token, globalThis.fetch, reviewConfig.botLogin),
 }: AppServerOptions) {
   if (!webhookSecret) throw new Error("GITHUB_WEBHOOK_SECRET is required");
+  const dashboard = new Dashboard(
+    dashboardToken ?? (reviewConfig as { dashboardToken?: string }).dashboardToken,
+  );
 
   const queue = new SerialDedupeQueue<ReviewJob>(
     async (job) => {
@@ -58,6 +64,7 @@ export function createAppServer({
         );
         return;
       }
+      const startedAt = Date.now();
       const prepared = await prepareAcceptedJob(
         client,
         job,
@@ -71,6 +78,15 @@ export function createAppServer({
       );
       if (!prepared) {
         metrics.inc("job_results_total", { result: "skipped" });
+        dashboard.recordJob({
+          at: new Date().toISOString(),
+          repository: job.fullName,
+          number: job.number,
+          head: job.headSha ?? "",
+          status: "skipped",
+          severities: {},
+          durationMs: Date.now() - startedAt,
+        });
         return;
       }
       const ignoredFingerprints = await loadIgnoreMemory(reviewConfig.memoryPath ?? "");
@@ -82,10 +98,21 @@ export function createAppServer({
         force: Boolean(job.force),
         checkRunId: prepared.checkRunId,
         eyesReactionId: prepared.eyesReactionId,
+        repoConfig: prepared.repoConfig,
         ignoredFingerprints,
         logger,
       });
       metrics.inc("job_results_total", { result: result.status });
+      dashboard.recordJob({
+        at: new Date().toISOString(),
+        repository: job.fullName,
+        number: job.number,
+        head: prepared.headSha ?? job.headSha ?? "",
+        status: result.status,
+        event: result.status === "reviewed" ? result.event : undefined,
+        severities: severityCounts(result.status === "reviewed" ? result.severities : []),
+        durationMs: Date.now() - startedAt,
+      });
       if (reviewConfig.notifyWebhook) {
         notifyReview(reviewConfig.notifyWebhook, {
           type: "review",
@@ -151,6 +178,27 @@ export function createAppServer({
       if (request.method === "GET" && request.url === "/healthz") {
         return json(response, 200, { ok: true, queued: queue.size });
       }
+      if (
+        request.method === "GET" &&
+        (request.url?.split("?")[0] === "/dashboard" ||
+          request.url?.split("?")[0] === "/dashboard.json")
+      ) {
+        if (
+          !dashboard.authorized({
+            url: request.url,
+            headers: { authorization: request.headers.authorization },
+          })
+        ) {
+          return json(response, 404, { error: "not_found" });
+        }
+        const wantsJson = request.url?.startsWith("/dashboard.json");
+        const metricsText = `${metrics.render()}# TYPE queue_depth gauge\nqueue_depth ${queue.size}\n`;
+        if (wantsJson)
+          return json(response, 200, JSON.parse(dashboard.renderJson(queue.size, metricsText)));
+        response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+        response.end(dashboard.renderHtml(queue.size, metricsText));
+        return;
+      }
       if (request.method === "GET" && request.url === "/metrics") {
         response.writeHead(200, { "Content-Type": "text/plain; version=0.0.4; charset=utf-8" });
         response.end(`${metrics.render()}# TYPE queue_depth gauge\nqueue_depth ${queue.size}\n`);
@@ -202,6 +250,7 @@ export async function startFromEnvironment(
   logger: Logger = env.LOG_FORMAT === "json" ? makeJsonLogger() : console,
 ) {
   const reviewConfig = loadReviewConfig(env);
+  const dashboardToken = env.DASHBOARD_TOKEN;
   const tokenProvider = new InstallationTokenProvider({
     clientId: env.APP_CLIENT_ID || env.APP_ID,
     privateKey: loadPrivateKey(env),
@@ -211,6 +260,7 @@ export async function startFromEnvironment(
     tokenProvider,
     reviewConfig,
     logger,
+    dashboardToken,
   });
   const port = positiveInteger(env.PORT, 3000);
   const host = env.HOST || "0.0.0.0";

@@ -129,6 +129,7 @@ and key files are ignored by Git. `.env.example` contains placeholders only.
 | `LOG_FORMAT` | `text` | `json` emits one `{time, level, message}` object per log line |
 | `PI_TIMEOUT_MS` | `600000` | Wall-clock cap for one model run; protects the serial queue |
 | `NOTIFY_WEBHOOK` | unset | URL posted each review result (Slack/Discord/generic) |
+| `DASHBOARD_TOKEN` | unset | When set, `/dashboard` requires this token (`?token=` or Bearer) |
 | `PI_VERSION` | `0.84.4` | Pi version stamped into review footers |
 | `BOT_LOGIN` | `hedgehog-pr-bot` | The App's bot account slug; set it when self-hosting under a different App name |
 | `MAX_DIFF_CHARS` | `4000000` | Maximum diff characters sent to each model |
@@ -167,7 +168,31 @@ duplicate comment, unless the line moved. When several models run, findings on t
 line merge into one comment listing every model that agreed.
 
 `GET /healthz` answers liveness; `GET /metrics` serves Prometheus counters (webhook
-events, job results, ignore jobs, queue depth). For automatic TLS on a spare domain, run
+events, job results, ignore jobs, queue depth); `GET /dashboard` renders a live page
+with the last reviews and counters (auto-refreshing, no build step), with the same
+data at `/dashboard.json`. Set `DASHBOARD_TOKEN` to require a token.
+
+## Per-repository configuration
+
+Repositories can tune their own reviews with a `.hedgehog.yml` at the reviewed head:
+
+```yaml
+# Silence hedgehog on this repository entirely.
+skip: false
+
+# Findings under these path prefixes are never posted.
+ignore_paths: [dist, vendor, generated]
+
+# Drop findings below this severity (Critical|High|Medium|Low).
+min_severity: Medium
+
+# Override the server's REVIEW_VERIFY for this repository.
+verify: false
+```
+
+Missing files, unknown keys, and invalid values are ignored, so the schema can
+grow without breaking old checkouts. These settings shape what gets posted; they
+do not change the review fingerprint. For automatic TLS on a spare domain, run
 `docker compose --profile tls up -d` with `DOMAIN` set — a Caddy sidecar handles
 certificates. A ready-made image is published to
 `ghcr.io/gregnazario/hedgehog-pr-bot:latest` on every push to main. Self-hosters can

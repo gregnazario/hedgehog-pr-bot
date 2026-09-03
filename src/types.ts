@@ -257,6 +257,7 @@ export interface StartProgressClient extends FinishProgressClient {
 
 export interface ProgressClient extends StartProgressClient {
   getPullRequest(fullName: string, number: number): Promise<PullRequest>;
+  getFileContents?(fullName: string, path: string, ref: string): Promise<string>;
   listIssueLabels?(fullName: string, number: number): Promise<(string | GitHubLabel)[]>;
   listPullRequestReviews?(fullName: string, number: number): Promise<PullRequestReview[]>;
 }

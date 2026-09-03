@@ -4,6 +4,7 @@ import { annotateDiff, type DiffLocations, indexDiffLocations } from "./diff.ts"
 import { errorMessage } from "./errors.ts";
 import { findingFingerprint } from "./memory.ts";
 import { finishProgress, reportModelProgress } from "./progress.ts";
+import { type RepoConfig, repoConfigDrops } from "./repo-config.ts";
 import { buildReviewBody, parseReviewOutput, toReviewComments } from "./review-format.ts";
 import {
   applyThreadDecisions,
@@ -45,6 +46,7 @@ export interface ReviewRequest {
   runModel?: (bundle: string, modelSpec: ModelSpec) => Promise<string>;
   verifyModel?: (bundle: string, modelSpec: ModelSpec) => Promise<string>;
   ignoredFingerprints?: ReadonlySet<string>;
+  repoConfig?: RepoConfig | null;
   logger?: Logger;
 }
 
@@ -60,6 +62,7 @@ export async function reviewPullRequest({
   verifyModel = (bundle, modelSpec) =>
     runPiVerify(bundle, modelSpec, config.piTimeoutMs ?? 600_000),
   ignoredFingerprints = new Set<string>(),
+  repoConfig = null,
   logger = console,
 }: ReviewRequest): Promise<ReviewResult> {
   try {
@@ -73,6 +76,7 @@ export async function reviewPullRequest({
       runModel,
       verifyModel,
       ignoredFingerprints,
+      repoConfig,
       logger,
     });
     await finishProgress(client, {
@@ -107,6 +111,7 @@ interface ReviewRun {
   runModel: (bundle: string, modelSpec: ModelSpec) => Promise<string>;
   verifyModel: (bundle: string, modelSpec: ModelSpec) => Promise<string>;
   ignoredFingerprints: ReadonlySet<string>;
+  repoConfig: RepoConfig | null;
   logger: Logger;
 }
 
@@ -120,6 +125,7 @@ async function runReview({
   runModel,
   verifyModel,
   ignoredFingerprints,
+  repoConfig,
   logger,
 }: ReviewRun): Promise<ReviewResult> {
   const pullRequest = await client.getPullRequest(fullName, number);
@@ -228,9 +234,13 @@ async function runReview({
   const includeModel = modelSpecs.length > 1;
   const merged = mergeParsedReviews(parsedReviews);
   merged.findings = merged.findings.filter(
-    (finding) => !ignoredFingerprints.has(findingFingerprint(finding)),
+    (finding) =>
+      !ignoredFingerprints.has(findingFingerprint(finding)) &&
+      !repoConfigDrops(repoConfig, finding),
   );
-  if (config.verifyFindings !== false) {
+  const verifyEnabled =
+    repoConfig?.verify !== undefined ? repoConfig.verify : config.verifyFindings !== false;
+  if (verifyEnabled) {
     merged.findings = await verifyHighSeverityFindings({
       findings: merged.findings,
       buildBundle: () =>
