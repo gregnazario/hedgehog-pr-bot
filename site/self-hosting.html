@@ -76,7 +76,9 @@
           <code>GITHUB_WEBHOOK_SECRET</code>.
         </li>
         <li>
-          Under <em>Permissions &amp; events</em>: Contents <strong>read</strong>;
+          Under <em>Permissions &amp; events</em>: Contents
+          <strong>read &amp; write</strong> (write is required only because GitHub gates
+          review-thread resolution behind it — hedgehog never pushes commits);
           Issues <strong>read &amp; write</strong>; Pull requests
           <strong>read &amp; write</strong>; Checks <strong>write</strong>. Subscribe to
           the <strong>Pull request</strong>, <strong>Issue comment</strong>, and

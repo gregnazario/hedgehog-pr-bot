@@ -78,7 +78,8 @@ use `BIND_PORT` to change the host-side port.
 
 Install the App on all repositories to review, or select a smaller set. It needs:
 
-- Contents: read
+- Contents: read and write (write is needed only because GitHub gates review-thread
+  resolution behind it; hedgehog never pushes commits)
 - Issues: read and write (needed to read `/review` comments)
 - Pull requests: read and write (reviews, dismissals, replies, and the 👀 reaction)
 - Checks: write (the `Pi review` check run)

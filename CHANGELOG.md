@@ -4,6 +4,15 @@ All notable changes to hedgehog-pr-bot are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unresolved]
+
+### Fixed
+
+- Documented and fixed the App permission for resolving review threads: GitHub
+  requires Contents **write** for the `resolveReviewThread` mutation (not just
+  Pull requests write), so thread resolution was silently failing everywhere;
+  the App manifest and all permission tables now specify Contents read & write.
+
 ## [Unreleased]
 
 ### Added
