@@ -77,3 +77,17 @@ walkthrough: maybe
   assert.equal(config.instructions, "One line of guidance");
   assert.equal(config.walkthrough, undefined);
 });
+
+test("focus accepts taxonomy names and drops everything else", () => {
+  const config = parseRepoConfig(`
+focus: [Security, correctness, vibes]
+`);
+  assert.deepEqual(config.focus, ["security", "correctness"]);
+
+  assert.deepEqual(parseRepoConfig("focus: performance").focus, ["performance"]);
+  assert.deepEqual(parseRepoConfig("focus:\n  - tests\n  - accessibility").focus, [
+    "tests",
+    "accessibility",
+  ]);
+  assert.equal(parseRepoConfig("focus: [vibes, style]").focus, undefined);
+});

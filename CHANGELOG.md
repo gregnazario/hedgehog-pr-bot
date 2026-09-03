@@ -17,6 +17,12 @@ All notable changes to hedgehog-pr-bot are documented here. The format follows
 
 ### Added
 
+- `focus:` in `.hedgehog.yml` narrows reviews to a fixed category taxonomy
+  (security, correctness, performance, reliability, maintainability, tests,
+  accessibility) with a glossed, scoped system prompt; out-of-focus issues are
+  still reported when Critical. Repos without it keep the default prompt
+  byte-for-byte, and the focus does not change the review fingerprint.
+
 - `.hedgehog.yml` grew three knobs: `instructions` (maintainer guidance fed into
   every review prompt), `walkthrough` (a file-by-file summary section in the review
   body), and `models` (a per-repository model list that changes the review
