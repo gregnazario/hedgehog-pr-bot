@@ -41,8 +41,10 @@ export function parseReviewOutput(text: unknown): ParsedReview {
       if (parsed && typeof parsed === "object") {
         const source = parsed as Record<string, unknown>;
         const findings = Array.isArray(source.findings) ? source.findings : [];
+        const walkthrough = String(source.walkthrough ?? "").trim();
         return {
           summary: String(source.summary ?? source.body ?? "").trim(),
+          ...(walkthrough ? { walkthrough } : {}),
           findings: findings
             .map(normalizeFinding)
             .filter((finding): finding is Finding => finding !== null),
@@ -116,6 +118,7 @@ export function buildReviewBody({
   overflow = [],
   headSha,
   modelLabels,
+  walkthrough,
   diffTruncated = false,
 }: {
   marker: string;
@@ -126,6 +129,7 @@ export function buildReviewBody({
   overflow?: readonly SummaryFinding[];
   headSha?: string;
   modelLabels?: string;
+  walkthrough?: string;
   diffTruncated?: boolean;
   /** Accepted for call-site convenience; the count is not rendered. */
   commentCount?: number;
@@ -144,6 +148,7 @@ export function buildReviewBody({
     overview = modelSummary || (hasFindings ? "See inline comments." : "No new findings.");
   }
   const parts = ["## Pi code review", "", overview];
+  if (walkthrough) parts.push("", "### Walkthrough", "", walkthrough);
   const tally = clean ? "" : tallyLine(severities);
   if (tally) parts.push("", tally);
   if (diffTruncated)

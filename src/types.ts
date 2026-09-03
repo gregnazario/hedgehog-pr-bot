@@ -34,6 +34,8 @@ export interface ReviewConfig {
   verifyFindings?: boolean;
   /** Optional URL notified with each review result; empty disables. */
   notifyWebhook?: string;
+  /** Payload shape for NOTIFY_WEBHOOK: generic JSON or Slack text. */
+  notifyWebhookFormat?: "json" | "slack";
   maxDiffChars: number;
   models: ModelSpec[];
   fingerprint: string;
@@ -53,8 +55,8 @@ export interface ReviewJob extends PullRequestRef {
   triggerCommentId?: number;
   /** Check run created at enqueue time; adopted by the worker when it starts. */
   checkRunId?: number;
-  /** "ignore" jobs mute a finding instead of reviewing; default is "review". */
-  kind?: "review" | "ignore";
+  /** "ignore" jobs mute a finding; "describe" jobs draft a PR description. */
+  kind?: "review" | "ignore" | "describe";
   /** For "ignore" jobs: the hedgehog comment the /ignore reply targets. */
   replyToCommentId?: number;
 }
@@ -164,6 +166,7 @@ export interface StillApplies {
 
 export interface ParsedReview {
   summary: string;
+  walkthrough?: string;
   findings: Finding[];
   addressedCommentIds: number[];
   stillApplies: StillApplies[];
@@ -277,6 +280,13 @@ export interface AckClient {
   reactToIssueComment?(fullName: string, commentId: number, content: string): Promise<unknown>;
 }
 
+/** Used by /describe jobs to draft pull-request descriptions. */
+export interface DescribeClient {
+  getPullRequest(fullName: string, number: number): Promise<PullRequest>;
+  getPullRequestDiff(fullName: string, number: number): Promise<string>;
+  createIssueComment(fullName: string, number: number, body: string): Promise<unknown>;
+}
+
 /** Used by /ignore jobs to mute findings and resolve threads. */
 export interface IgnoreClient {
   getReviewComment?(
@@ -294,7 +304,7 @@ export interface IgnoreClient {
   reactToReviewComment?(fullName: string, commentId: number, content: string): Promise<unknown>;
 }
 
-export type AppClient = ReviewerClient & ProgressClient & AckClient & IgnoreClient;
+export type AppClient = ReviewerClient & ProgressClient & AckClient & IgnoreClient & DescribeClient;
 
 export interface TokenProvider {
   get(installationId: number): Promise<string>;

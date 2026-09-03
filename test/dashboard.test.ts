@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import { Dashboard } from "../src/dashboard.ts";
 
@@ -62,4 +65,18 @@ test("dashboard html escapes untrusted values", () => {
   const html = dashboard.renderHtml(0, "");
   assert.doesNotMatch(html, /<script>/);
   assert.doesNotMatch(html, /<b>owned<\/b>/);
+});
+
+test("dashboard history survives restarts via REVIEW_HISTORY_PATH", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "hedgehog-dash-"));
+  const path = join(dir, "history.jsonl");
+  const first = new Dashboard(undefined, path);
+  first.recordJob(sample);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+
+  const second = new Dashboard(undefined, path);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  const parsed = JSON.parse(second.renderJson(0, ""));
+  assert.equal(parsed.jobs.length, 1);
+  assert.equal(parsed.jobs[0].repository, "gregnazario/example");
 });

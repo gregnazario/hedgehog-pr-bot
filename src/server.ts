@@ -4,6 +4,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { pathToFileURL } from "node:url";
 import { loadPrivateKey, loadReviewConfig, positiveInteger } from "./config.ts";
 import { Dashboard } from "./dashboard.ts";
+import { applyDescribeJob } from "./describe.ts";
 import { errorMessage } from "./errors.ts";
 import { GitHubClient, InstallationTokenProvider } from "./github.ts";
 import { applyIgnoreJob } from "./ignore.ts";
@@ -13,11 +14,12 @@ import { createMetrics, type Metrics } from "./metrics.ts";
 import { notifyReview, severityCounts } from "./notify.ts";
 import { cancelQueuedProgress, prepareAcceptedJob, startQueuedProgress } from "./progress.ts";
 import { SerialDedupeQueue } from "./queue.ts";
-import { reviewPullRequest } from "./reviewer.ts";
+import { reviewPullRequest, runPiDescribe } from "./reviewer.ts";
 import type {
   AppClient,
   EnvSource,
   Logger,
+  ModelSpec,
   ReviewConfig,
   ReviewJob,
   TokenProvider,
@@ -33,6 +35,8 @@ export interface AppServerOptions {
   logger?: Logger;
   metrics?: Metrics;
   dashboardToken?: string;
+  /** JSONL file keeping dashboard history across restarts; empty disables. */
+  historyPath?: string;
   createClient?: (token: string) => AppClient;
 }
 
@@ -43,17 +47,41 @@ export function createAppServer({
   logger = console,
   metrics = createMetrics(),
   dashboardToken,
+  historyPath,
   createClient = (token) => new GitHubClient(token, globalThis.fetch, reviewConfig.botLogin),
 }: AppServerOptions) {
   if (!webhookSecret) throw new Error("GITHUB_WEBHOOK_SECRET is required");
   const dashboard = new Dashboard(
     dashboardToken ?? (reviewConfig as { dashboardToken?: string }).dashboardToken,
+    historyPath,
   );
 
   const queue = new SerialDedupeQueue<ReviewJob>(
     async (job) => {
       const token = await tokenProvider.get(job.installationId);
       const client = createClient(token);
+      if (job.kind === "describe") {
+        metrics.inc("describe_jobs_total");
+        const describeStart = Date.now();
+        const describeSpec: ModelSpec = reviewConfig.models[0];
+        const described = await applyDescribeJob(
+          client,
+          job,
+          { maxDiffChars: reviewConfig.maxDiffChars },
+          (bundle) => runPiDescribe(bundle, describeSpec, reviewConfig.piTimeoutMs ?? 600_000),
+          logger,
+        );
+        dashboard.recordJob({
+          at: new Date().toISOString(),
+          repository: job.fullName,
+          number: job.number,
+          head: job.headSha ?? "",
+          status: described ? "described" : "describe_failed",
+          severities: {},
+          durationMs: Date.now() - describeStart,
+        });
+        return;
+      }
       if (job.kind === "ignore") {
         metrics.inc("ignore_jobs_total");
         await applyIgnoreJob(
@@ -99,6 +127,7 @@ export function createAppServer({
         checkRunId: prepared.checkRunId,
         eyesReactionId: prepared.eyesReactionId,
         repoConfig: prepared.repoConfig,
+        reviewFingerprint: prepared.fingerprint,
         ignoredFingerprints,
         logger,
       });
@@ -114,15 +143,19 @@ export function createAppServer({
         durationMs: Date.now() - startedAt,
       });
       if (reviewConfig.notifyWebhook) {
-        notifyReview(reviewConfig.notifyWebhook, {
-          type: "review",
-          repository: job.fullName,
-          pull_request: job.number,
-          head: prepared.headSha ?? job.headSha ?? "",
-          status: result.status,
-          event: result.status === "reviewed" ? result.event : undefined,
-          severities: severityCounts(result.status === "reviewed" ? result.severities : []),
-        }).then((delivered) => {
+        notifyReview(
+          reviewConfig.notifyWebhook,
+          {
+            type: "review",
+            repository: job.fullName,
+            pull_request: job.number,
+            head: prepared.headSha ?? job.headSha ?? "",
+            status: result.status,
+            event: result.status === "reviewed" ? result.event : undefined,
+            severities: severityCounts(result.status === "reviewed" ? result.severities : []),
+          },
+          reviewConfig.notifyWebhookFormat,
+        ).then((delivered) => {
           if (!delivered) logger.error(`Could not deliver review notification for ${job.key}`);
         });
       }
@@ -251,6 +284,7 @@ export async function startFromEnvironment(
 ) {
   const reviewConfig = loadReviewConfig(env);
   const dashboardToken = env.DASHBOARD_TOKEN;
+  const historyPath = env.REVIEW_HISTORY_PATH || "";
   const tokenProvider = new InstallationTokenProvider({
     clientId: env.APP_CLIENT_ID || env.APP_ID,
     privateKey: loadPrivateKey(env),
@@ -261,6 +295,7 @@ export async function startFromEnvironment(
     reviewConfig,
     logger,
     dashboardToken,
+    historyPath,
   });
   const port = positiveInteger(env.PORT, 3000);
   const host = env.HOST || "0.0.0.0";

@@ -266,3 +266,26 @@ test("prepareAcceptedJob surfaces repo config on accepted jobs", async () => {
   assert.equal(prepared.repoConfig?.minSeverity, "Medium");
   assert.deepEqual(prepared.repoConfig?.ignorePaths, ["gen"]);
 });
+
+test("repo models change the marker fingerprint", async () => {
+  const client = reviewableClient({
+    getFileContents: async () => "models: zai/glm-4.7:low\n",
+    listPullRequestReviews: async () => [
+      {
+        id: 1,
+        state: "APPROVED",
+        user: { type: "Bot" },
+        body: "<!-- greg-pr-bot-review head:abc config:fp -->\ndone",
+      },
+    ],
+  });
+  // The server fingerprint "fp" is folded with the repo models, so the old
+  // marker no longer matches and the job is accepted.
+  const prepared = await prepareAcceptedJob(
+    client,
+    { fullName: "gregnazario/example", number: 7 },
+    { author: "gregnazario", fingerprint: "fp" },
+  );
+  assert.ok(prepared);
+  assert.notEqual(prepared.fingerprint, "fp");
+});

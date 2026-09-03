@@ -47,3 +47,33 @@ test("repoConfigDrops filters by path prefix and severity floor", () => {
   assert.equal(repoConfigDrops(config, { path: "src/app.ts", severity: "High" }), false);
   assert.equal(repoConfigDrops(null, { path: "anything", severity: "Low" }), false);
 });
+
+test("parses instructions block scalars, walkthrough, and models", () => {
+  const config = parseRepoConfig(`
+instructions: |
+  We use React 19 server components.
+  Flag any client-only hooks.
+walkthrough: true
+models: zai/glm-4.7:low, openai/gpt-5:medium
+`);
+  assert.equal(
+    config.instructions,
+    "We use React 19 server components.\nFlag any client-only hooks.",
+  );
+  assert.equal(config.walkthrough, true);
+  assert.deepEqual(
+    config.models?.map((spec) => spec.label),
+    ["zai/glm-4.7:low", "openai/gpt-5:medium"],
+  );
+});
+
+test("invalid models and single-line instructions degrade gracefully", () => {
+  const config = parseRepoConfig(`
+models: not-a-model-spec
+instructions: "One line of guidance"
+walkthrough: maybe
+`);
+  assert.equal(config.models, undefined);
+  assert.equal(config.instructions, "One line of guidance");
+  assert.equal(config.walkthrough, undefined);
+});

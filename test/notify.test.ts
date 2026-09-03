@@ -15,6 +15,7 @@ test("notifyReview posts the JSON payload and reports success", async () => {
       event: "COMMENT",
       severities: { Low: 1 },
     },
+    "json",
     async (url, init) => {
       seen.push({ url, init });
       return new Response("ok", { status: 200 });
@@ -50,6 +51,7 @@ test("notifyReview swallows failures and skips empty URLs", async () => {
         status: "reviewed",
         severities: {},
       },
+      "json",
       async () => {
         throw new Error("network down");
       },
@@ -64,4 +66,31 @@ test("severityCounts tallies severities", () => {
     High: 1,
     Low: 2,
   });
+});
+
+test("slack format wraps a readable summary in text", async () => {
+  const bodies: any[] = [];
+  const ok = await notifyReview(
+    "https://hooks.slack.com/x",
+    {
+      type: "review",
+      repository: "gregnazario/example",
+      pull_request: 7,
+      head: "abcdef1234",
+      status: "reviewed",
+      event: "COMMENT",
+      severities: { High: 1, Low: 2 },
+    },
+    "slack",
+    async (_url, init) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      return new Response("ok", { status: 200 });
+    },
+  );
+  assert.equal(ok, true);
+  assert.deepEqual(Object.keys(bodies[0]), ["text"]);
+  assert.match(
+    bodies[0].text,
+    /gregnazario\/example#7 \(abcdef1\): reviewed \(COMMENT\) · 1 High, 2 Low/,
+  );
 });

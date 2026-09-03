@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import {
   hasSkipReviewLabel,
+  isDescribeCommand,
   isIgnoreCommand,
   isReviewCommand,
   isReviewedAuthor,
@@ -101,6 +102,7 @@ function reviewJobFromComment(
 ): ReviewJob | null {
   if (payload.action !== "created") return null;
   if (!payload.issue?.pull_request) return null;
+  if (isDescribeCommand(payload.comment?.body)) return describeJobFromComment(payload, authors);
   if (!isReviewCommand(payload.comment?.body)) return null;
   if (!isReviewedAuthor(payload.comment?.user?.login, authors)) return null;
   if (hasSkipReviewLabel(payload.issue.labels)) return null;
@@ -116,6 +118,28 @@ function reviewJobFromComment(
     number,
     installationId,
     force: true,
+    triggerCommentId: payload.comment?.id,
+  };
+}
+
+function describeJobFromComment(
+  payload: IssueCommentEvent,
+  authors: string | readonly string[],
+): ReviewJob | null {
+  if (!isReviewedAuthor(payload.comment?.user?.login, authors)) return null;
+  if (hasSkipReviewLabel(payload.issue?.labels)) return null;
+  const fullName = payload.repository?.full_name;
+  const installationId = payload.installation?.id;
+  const number = payload.issue?.number;
+  if (!fullName || !installationId || number === undefined || !Number.isSafeInteger(number))
+    return null;
+  return {
+    key: `${fullName}#${number}`,
+    fullName,
+    number,
+    installationId,
+    force: false,
+    kind: "describe",
     triggerCommentId: payload.comment?.id,
   };
 }

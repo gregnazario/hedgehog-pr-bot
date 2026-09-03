@@ -1,4 +1,5 @@
-import type { Severity } from "./types.ts";
+import { parseModelSpecs } from "./config.ts";
+import type { ModelSpec, Severity } from "./types.ts";
 
 const SEVERITIES = new Set(["Critical", "High", "Medium", "Low"]);
 
@@ -11,35 +12,47 @@ export interface RepoConfig {
   minSeverity?: Severity;
   /** Override the server's REVIEW_VERIFY setting for this repository. */
   verify?: boolean;
+  /** Maintainer review guidance, included in the model prompt. */
+  instructions?: string;
+  /** Ask for a file-by-file walkthrough in the review body. */
+  walkthrough?: boolean;
+  /** Per-repository model list; changes the review fingerprint. */
+  models?: ModelSpec[];
 }
 
 /**
  * Parses the flat `.hedgehog.yml` schema with a strict YAML subset: comments,
- * `key: value` scalars, inline `[a, b]` lists, and `- item` block lists.
- * Unknown keys are ignored so the schema can grow; unparsable values fall
- * back to defaults rather than failing the review.
+ * `key: value` scalars, inline `[a, b]` lists, `- item` block lists, and one
+ * block scalar (`instructions: |`). Unknown keys are ignored so the schema
+ * can grow; unparsable values fall back to defaults rather than failing the
+ * review.
  */
 export function parseRepoConfig(raw: string): RepoConfig {
   const config: RepoConfig = {};
-  const lines = raw
-    .split("\n")
-    .map((line) => line.replace(/\t/g, "  "))
-    .map((line) => line.trim());
+  const lines = raw.split("\n");
 
   for (let i = 0; i < lines.length; i += 1) {
-    const line = lines[i];
-    if (!line || line.startsWith("#")) continue;
-    const colon = line.indexOf(":");
-    if (colon <= 0) continue;
-    const key = line.slice(0, colon).trim();
-    const value = line.slice(colon + 1).trim();
+    const trimmed = normalize(lines[i] ?? "");
+    if (!trimmed || trimmed.startsWith("#")) continue;
 
-    // Block list: collect following "- item" lines.
-    if (value === "" && lines[i + 1]?.startsWith("- ")) {
+    // Block scalar: instructions: | followed by indented lines.
+    if (/^instructions:\s*\|$/.test(trimmed)) {
+      const block = collectBlockScalar(lines, i + 1);
+      if (block.text.trim()) config.instructions = block.text.trimEnd();
+      i = block.lastIndex;
+      continue;
+    }
+
+    const colon = trimmed.indexOf(":");
+    if (colon <= 0) continue;
+    const key = trimmed.slice(0, colon).trim();
+    const value = trimmed.slice(colon + 1).trim();
+
+    if (value === "" && normalize(lines[i + 1] ?? "").startsWith("- ")) {
       const items: string[] = [];
-      while (lines[i + 1]?.startsWith("- ")) {
+      while (normalize(lines[i + 1] ?? "").startsWith("- ")) {
         i += 1;
-        items.push(stripQuotes(lines[i].slice(2).trim()));
+        items.push(stripQuotes(normalize(lines[i]).slice(2).trim()));
       }
       applyValue(config, key, items);
       continue;
@@ -70,9 +83,38 @@ export function parseRepoConfig(raw: string): RepoConfig {
   return config;
 }
 
+interface BlockScalar {
+  text: string;
+  lastIndex: number;
+}
+
+/** Collects an indented block scalar, dedented by its first line's indent. */
+function collectBlockScalar(lines: string[], start: number): BlockScalar {
+  const body: string[] = [];
+  let lastIndex = start - 1;
+  let indent: number | null = null;
+  for (let i = start; i < lines.length; i += 1) {
+    const line = lines[i] ?? "";
+    if (line.trim() === "") {
+      body.push("");
+      continue;
+    }
+    const leading = line.length - line.trimStart().length;
+    if (indent === null) indent = leading;
+    if (leading < (indent ?? 0)) break;
+    body.push(line.slice(indent));
+    lastIndex = i;
+  }
+  return { text: body.join("\n"), lastIndex };
+}
+
 function applyValue(config: RepoConfig, key: string, value: string[] | boolean | string): void {
-  if (key === "skip" || key === "verify") {
+  if (key === "skip" || key === "verify" || key === "walkthrough") {
     if (typeof value === "boolean") config[key] = value;
+    return;
+  }
+  if (key === "instructions") {
+    if (typeof value === "string" && value.trim()) config.instructions = value.trim();
     return;
   }
   if (key === "ignore_paths") {
@@ -83,7 +125,20 @@ function applyValue(config: RepoConfig, key: string, value: string[] | boolean |
   }
   if (key === "min_severity" && typeof value === "string" && SEVERITIES.has(value)) {
     config.minSeverity = value as Severity;
+    return;
   }
+  if (key === "models" && typeof value === "string" && value.trim()) {
+    try {
+      const models = parseModelSpecs(value);
+      if (models.length > 0) config.models = models;
+    } catch {
+      // Invalid model specs are ignored; server defaults apply.
+    }
+  }
+}
+
+function normalize(line: string): string {
+  return line.replaceAll("\t", "  ").trim();
 }
 
 function stripQuotes(value: string): string {

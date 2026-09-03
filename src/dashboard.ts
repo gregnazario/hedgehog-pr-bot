@@ -1,4 +1,6 @@
 import { createHash, timingSafeEqual } from "node:crypto";
+import { appendFile, mkdir, readFile } from "node:fs/promises";
+import { dirname } from "node:path";
 import type { Severity } from "./types.ts";
 
 export interface DashboardJob {
@@ -17,15 +19,39 @@ const MAX_JOBS = 25;
 export class Dashboard {
   private readonly jobs: DashboardJob[] = [];
   private readonly tokenHash: Buffer | null;
+  private readonly persistPath: string;
 
-  constructor(token: string | undefined) {
+  constructor(token: string | undefined, persistPath = "") {
     // Store a hash so the secret never sits in memory next to render paths.
     this.tokenHash = token ? createHash("sha256").update(token).digest() : null;
+    this.persistPath = persistPath;
+    void this.restore();
+  }
+
+  private async restore(): Promise<void> {
+    if (!this.persistPath) return;
+    try {
+      const raw = await readFile(this.persistPath, "utf8");
+      for (const line of raw.trimEnd().split("\n").slice(-MAX_JOBS)) {
+        if (!line.trim()) continue;
+        try {
+          this.jobs.push(JSON.parse(line) as DashboardJob);
+        } catch {
+          // Skip corrupt lines; the dashboard is advisory.
+        }
+      }
+    } catch {
+      // No history yet.
+    }
   }
 
   recordJob(job: DashboardJob): void {
     this.jobs.push(job);
     if (this.jobs.length > MAX_JOBS) this.jobs.splice(0, this.jobs.length - MAX_JOBS);
+    if (this.persistPath) {
+      void appendFile(this.persistPath, `${JSON.stringify(job)}\n`, "utf8").catch(() => {});
+      void mkdir(dirname(this.persistPath), { recursive: true }).catch(() => {});
+    }
   }
 
   /** True when the request may see the dashboard (no token configured, or match). */
