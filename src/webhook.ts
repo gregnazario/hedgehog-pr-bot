@@ -134,7 +134,7 @@ function describeJobFromComment(
   if (!fullName || !installationId || number === undefined || !Number.isSafeInteger(number))
     return null;
   return {
-    key: `${fullName}#${number}`,
+    key: `${fullName}#${number}#describe`,
     fullName,
     number,
     installationId,
@@ -168,7 +168,7 @@ function ignoreJobFromReviewComment(
   )
     return null;
   return {
-    key: `${fullName}#${number}`,
+    key: `${fullName}#${number}#ignore`,
     fullName,
     number,
     installationId,

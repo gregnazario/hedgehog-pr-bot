@@ -311,8 +311,10 @@ export async function prepareAcceptedJob<T extends PullRequestRef & { checkRunId
   logger: Logger = console,
 ): Promise<(T & PreparedJob) | null> {
   const pullRequest = await client.getPullRequest(job.fullName, job.number);
-  const headShaForConfig = pullRequest.head?.sha;
-  const repoConfig = await loadRepoConfig(client, job.fullName, headShaForConfig, logger);
+  // Config is read from the PR base branch, never the reviewed head: PR
+  // authors must not steer their own review via instructions or models.
+  const configSha = pullRequest.base?.sha ?? pullRequest.head?.sha;
+  const repoConfig = await loadRepoConfig(client, job.fullName, configSha, logger);
   if (repoConfig?.skip) {
     await abandonQueuedProgress(client, {
       fullName: job.fullName,

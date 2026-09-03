@@ -289,3 +289,27 @@ test("repo models change the marker fingerprint", async () => {
   assert.ok(prepared);
   assert.notEqual(prepared.fingerprint, "fp");
 });
+
+test("repo config is read from the base branch, not the reviewed head", async () => {
+  const requested: string[] = [];
+  const client = reviewableClient({
+    getPullRequest: async () => ({
+      number: 7,
+      state: "open",
+      draft: false,
+      user: { login: "gregnazario" },
+      head: { sha: "headsha" },
+      base: { ref: "main", sha: "basesha" },
+    }),
+    getFileContents: async (_repo, _path, ref) => {
+      requested.push(ref);
+      return "skip: false";
+    },
+  });
+  await prepareAcceptedJob(
+    client,
+    { fullName: "gregnazario/example", number: 7 },
+    { author: "gregnazario", fingerprint: "fp", force: true },
+  );
+  assert.deepEqual(requested, ["basesha"]);
+});

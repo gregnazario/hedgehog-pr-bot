@@ -1,12 +1,8 @@
 import { annotateDiff } from "./diff.ts";
 import { errorMessage } from "./errors.ts";
-import type { PullRequest } from "./types.ts";
-
-export interface DescribeClient {
-  getPullRequest(fullName: string, number: number): Promise<PullRequest>;
-  getPullRequestDiff(fullName: string, number: number): Promise<string>;
-  createIssueComment(fullName: string, number: number, body: string): Promise<unknown>;
-}
+import { GitHubHttpError } from "./github.ts";
+import { parseRepoConfig } from "./repo-config.ts";
+import type { DescribeClient, PullRequest } from "./types.ts";
 
 export interface DescribeConfig {
   maxDiffChars: number;
@@ -38,6 +34,28 @@ export function buildDescribeBundle(
     annotateDiff(visibleDiff),
     "</diff>",
   ].join("\n");
+}
+
+/** A silenced repository (.hedgehog.yml skip: true) gets no /describe either. */
+async function repoIsSilenced(
+  client: DescribeClient,
+  fullName: string,
+  pullRequest: PullRequest,
+): Promise<boolean> {
+  if (typeof client.getFileContents !== "function") return false;
+  try {
+    const raw = await client.getFileContents(
+      fullName,
+      ".hedgehog.yml",
+      pullRequest.base?.sha ?? pullRequest.head?.sha ?? "",
+    );
+    return parseRepoConfig(raw).skip === true;
+  } catch (error) {
+    if (!(error instanceof GitHubHttpError && error.status === 404)) {
+      // Config problems never block a describe.
+    }
+    return false;
+  }
 }
 
 export interface DescribeResult {
@@ -72,6 +90,7 @@ export async function applyDescribeJob(
   try {
     const pullRequest = await client.getPullRequest(job.fullName, job.number);
     if (pullRequest.state !== "open") return null;
+    if (await repoIsSilenced(client, job.fullName, pullRequest)) return null;
     const diff = await client.getPullRequestDiff(job.fullName, job.number);
     const bundle = buildDescribeBundle(job.fullName, pullRequest, diff, config.maxDiffChars);
     const parsed = parseDescribeOutput(await runModel(bundle));

@@ -163,7 +163,7 @@ test("/ignore replies under review comments enqueue ignore jobs", () => {
     },
   };
   assert.deepEqual(reviewJobFromWebhook("pull_request_review_comment", payload, "gregnazario"), {
-    key: "gregnazario/example#42",
+    key: "gregnazario/example#42#ignore",
     fullName: "gregnazario/example",
     number: 42,
     installationId: 123,

@@ -78,7 +78,7 @@ export interface PullRequest {
   body?: string;
   user?: GitHubUser;
   head: { sha: string; ref?: string };
-  base?: { ref?: string };
+  base?: { ref?: string; sha?: string };
   labels?: (string | GitHubLabel)[];
 }
 
@@ -285,6 +285,7 @@ export interface DescribeClient {
   getPullRequest(fullName: string, number: number): Promise<PullRequest>;
   getPullRequestDiff(fullName: string, number: number): Promise<string>;
   createIssueComment(fullName: string, number: number, body: string): Promise<unknown>;
+  getFileContents?(fullName: string, path: string, ref: string): Promise<string>;
 }
 
 /** Used by /ignore jobs to mute findings and resolve threads. */

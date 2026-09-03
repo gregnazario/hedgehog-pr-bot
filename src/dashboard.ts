@@ -21,11 +21,18 @@ export class Dashboard {
   private readonly tokenHash: Buffer | null;
   private readonly persistPath: string;
 
+  private readonly directoryReady: Promise<void>;
+
   constructor(token: string | undefined, persistPath = "") {
     // Store a hash so the secret never sits in memory next to render paths.
     this.tokenHash = token ? createHash("sha256").update(token).digest() : null;
     this.persistPath = persistPath;
-    void this.restore();
+    this.directoryReady = persistPath
+      ? mkdir(dirname(persistPath), { recursive: true }).then(
+          () => this.restore(),
+          () => {},
+        )
+      : Promise.resolve();
   }
 
   private async restore(): Promise<void> {
@@ -35,7 +42,8 @@ export class Dashboard {
       for (const line of raw.trimEnd().split("\n").slice(-MAX_JOBS)) {
         if (!line.trim()) continue;
         try {
-          this.jobs.push(JSON.parse(line) as DashboardJob);
+          const job = JSON.parse(line) as unknown;
+          if (isDashboardJob(job)) this.jobs.push(job);
         } catch {
           // Skip corrupt lines; the dashboard is advisory.
         }
@@ -49,8 +57,9 @@ export class Dashboard {
     this.jobs.push(job);
     if (this.jobs.length > MAX_JOBS) this.jobs.splice(0, this.jobs.length - MAX_JOBS);
     if (this.persistPath) {
-      void appendFile(this.persistPath, `${JSON.stringify(job)}\n`, "utf8").catch(() => {});
-      void mkdir(dirname(this.persistPath), { recursive: true }).catch(() => {});
+      void this.directoryReady.then(() =>
+        appendFile(this.persistPath, `${JSON.stringify(job)}\n`, "utf8").catch(() => {}),
+      );
     }
   }
 
@@ -131,6 +140,19 @@ ${rows || '<tr><td colspan="6" class="muted">no reviews yet</td></tr>'}
 </body>
 </html>`;
   }
+}
+
+function isDashboardJob(value: unknown): value is DashboardJob {
+  if (!value || typeof value !== "object") return false;
+  const job = value as Record<string, unknown>;
+  return (
+    typeof job.at === "string" &&
+    typeof job.repository === "string" &&
+    typeof job.number === "number" &&
+    typeof job.head === "string" &&
+    typeof job.status === "string" &&
+    typeof job.durationMs === "number"
+  );
 }
 
 function severitySummary(severities: Partial<Record<Severity, number>>): string {

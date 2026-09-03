@@ -39,3 +39,18 @@ test("notifies when a pending job is replaced", async () => {
   await queue.onIdle();
   assert.deepEqual(replaced, [[1, 2]]);
 });
+
+test("review and command jobs with different key suffixes coexist", async () => {
+  const handled: string[] = [];
+  const queue = new SerialDedupeQueue<{ key: string; kind: string }>(async (job) => {
+    handled.push(job.key);
+  });
+  queue.enqueue({ key: "owner/repo#1", kind: "review" });
+  queue.enqueue({ key: "owner/repo#1#describe", kind: "describe" });
+  queue.enqueue({ key: "owner/repo#1", kind: "review" });
+  await queue.onIdle();
+  // The newest review replaces the first; the describe survives.
+  assert.equal(handled.length, 2);
+  assert.ok(handled.includes("owner/repo#1#describe"));
+  assert.ok(handled.includes("owner/repo#1"));
+});

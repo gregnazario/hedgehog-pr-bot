@@ -80,3 +80,19 @@ test("dashboard history survives restarts via REVIEW_HISTORY_PATH", async () => 
   assert.equal(parsed.jobs.length, 1);
   assert.equal(parsed.jobs[0].repository, "gregnazario/example");
 });
+
+test("restored history skips structurally invalid lines", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "hedgehog-dash-"));
+  const path = join(dir, "history.jsonl");
+  const first = new Dashboard(undefined, path);
+  first.recordJob(sample);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  const { appendFile } = await import("node:fs/promises");
+  await appendFile(path, '{"foo":1}\n', "utf8");
+
+  const second = new Dashboard(undefined, path);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  const parsed = JSON.parse(second.renderJson(0, ""));
+  assert.equal(parsed.jobs.length, 1);
+  assert.equal(parsed.jobs[0].repository, "gregnazario/example");
+});

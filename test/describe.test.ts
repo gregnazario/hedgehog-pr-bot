@@ -69,7 +69,7 @@ test("/describe from a reviewed author enqueues a describe job", () => {
     issue: { number: 7, user: { login: "gregnazario" }, labels: [], pull_request: {} },
   };
   assert.deepEqual(reviewJobFromWebhook("issue_comment", payload, "gregnazario"), {
-    key: "gregnazario/example#7",
+    key: "gregnazario/example#7#describe",
     fullName: "gregnazario/example",
     number: 7,
     installationId: 1,
