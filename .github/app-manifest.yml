@@ -9,7 +9,9 @@ hook_attributes:
   url: https://your-host/github/webhook
 public: true
 permissions:
-  contents: read
+  # contents:write is only needed because GitHub gates the resolveReviewThread
+  # GraphQL mutation (thread resolution) behind it, not just pull_requests:write.
+  contents: write
   issues: write
   pull_requests: write
   checks: write

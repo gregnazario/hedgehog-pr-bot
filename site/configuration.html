@@ -236,8 +236,11 @@ ANTHROPIC_API_KEY=…</code></pre>
         <tbody>
           <tr>
             <td>Contents</td>
-            <td>read</td>
-            <td>Reading pull-request diffs.</td>
+            <td>read &amp; write</td>
+            <td>
+              Reading pull-request diffs. Write exists only because GitHub gates the
+              thread-resolution mutation behind it; hedgehog never pushes commits.
+            </td>
           </tr>
           <tr>
             <td>Issues</td>
