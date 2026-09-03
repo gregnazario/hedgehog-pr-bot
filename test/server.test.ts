@@ -139,6 +139,14 @@ test("accepted pull_request webhook opens a queued check before the review runs"
   const adopted = updates.find((update) => update.status === "in_progress");
   assert.equal(adopted?.title, "👀 Reviewing…");
   assert.equal(updates[updates.length - 1].status, "completed");
+
+  const dashboard = await fetch(`http://127.0.0.1:${port}/dashboard.json`);
+  assert.equal(dashboard.status, 200);
+  const payload = (await dashboard.json()) as {
+    jobs: Array<{ status: string; repository: string }>;
+  };
+  assert.equal(payload.jobs[0].status, "reviewed");
+  assert.equal(payload.jobs[0].repository, "gregnazario/example");
 });
 
 test("does not start progress when this head is already reviewed", async (t) => {
@@ -265,4 +273,27 @@ test("does not start progress for skip-review PRs", async (t) => {
   assert.equal(response.status, 202);
   assert.deepEqual(await response.json(), { accepted: false });
   assert.equal(checked, false);
+});
+
+test("dashboard requires its token when one is configured", async (t) => {
+  const secret = "test-secret";
+  const { server } = createAppServer({
+    webhookSecret: secret,
+    tokenProvider: { get: async () => "token" },
+    reviewConfig: {
+      author: "gregnazario",
+      authors: ["gregnazario"],
+      botLogin: "hedgehog-pr-bot",
+      fingerprint: "abc123",
+      models: [],
+      maxDiffChars: 1000,
+    },
+    logger: { log() {}, error() {} },
+    dashboardToken: "letmein",
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const { port } = server.address() as AddressInfo;
+  assert.equal((await fetch(`http://127.0.0.1:${port}/dashboard`)).status, 404);
+  assert.equal((await fetch(`http://127.0.0.1:${port}/dashboard?token=letmein`)).status, 200);
 });

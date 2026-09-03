@@ -6,6 +6,15 @@ All notable changes to hedgehog-pr-bot are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Per-repository configuration via `.hedgehog.yml`: `skip`, `ignore_paths`,
+  `min_severity`, and `verify` shape what gets posted per repo without touching
+  server environment variables.
+- Live dashboard at `/dashboard` (auto-refreshing HTML) and `/dashboard.json`:
+  recent reviews with outcomes, severities, and durations, plus all metrics.
+  Optional `DASHBOARD_TOKEN` gates access via query or Bearer header.
+
 ## [0.2.0] - 2026-09-02
 
 ### Added

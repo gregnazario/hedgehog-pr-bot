@@ -930,3 +930,52 @@ test("huge diffs route to PI_MODELS_LARGE", async () => {
   });
   assert.deepEqual(seenLabels, ["zai/glm-4.7:low"]);
 });
+
+test("repo config min_severity drops low findings", async () => {
+  let posted: any;
+  const client = baseClient({
+    createPullRequestReview: async (_repo, _number, payload) => {
+      posted = payload;
+    },
+  });
+  const result = await reviewPullRequest({
+    client,
+    fullName: "gregnazario/example",
+    number: 7,
+    config,
+    repoConfig: { minSeverity: "High" },
+    runModel: async () => jsonReview(),
+    verifyModel: confirmAll,
+    logger: { log() {}, error() {} },
+  });
+  assert.ok(result.status === "reviewed");
+  assert.equal(posted.event, "APPROVE");
+  assert.equal(posted.comments, undefined);
+});
+
+test("repo config can disable the verification pass", async () => {
+  let verifyCalls = 0;
+  const client = baseClient({
+    createPullRequestReview: async () => {},
+  });
+  await reviewPullRequest({
+    client,
+    fullName: "gregnazario/example",
+    number: 7,
+    config,
+    repoConfig: { verify: false },
+    runModel: async () =>
+      JSON.stringify({
+        summary: "Risk.",
+        findings: [
+          { severity: "High", path: "src/app.mjs", line: 4, side: "RIGHT", body: "Risky default." },
+        ],
+      }),
+    verifyModel: async () => {
+      verifyCalls += 1;
+      return "{}";
+    },
+    logger: { log() {}, error() {} },
+  });
+  assert.equal(verifyCalls, 0);
+});

@@ -1,5 +1,7 @@
 import { reviewMarker } from "./config.ts";
 import { errorMessage } from "./errors.ts";
+import { GitHubHttpError } from "./github.ts";
+import { parseRepoConfig, type RepoConfig } from "./repo-config.ts";
 import {
   CHECK_NAME,
   DEFAULT_BOT_LOGIN,
@@ -286,6 +288,8 @@ export interface PreparedJob {
   headSha?: string;
   eyesReactionId?: number;
   checkRunId?: number;
+  /** Parsed .hedgehog.yml from this repository, when present. */
+  repoConfig?: RepoConfig | null;
 }
 
 export async function prepareAcceptedJob<T extends PullRequestRef & { checkRunId?: number }>(
@@ -305,6 +309,16 @@ export async function prepareAcceptedJob<T extends PullRequestRef & { checkRunId
   logger: Logger = console,
 ): Promise<(T & PreparedJob) | null> {
   const pullRequest = await client.getPullRequest(job.fullName, job.number);
+  const headShaForConfig = pullRequest.head?.sha;
+  const repoConfig = await loadRepoConfig(client, job.fullName, headShaForConfig, logger);
+  if (repoConfig?.skip) {
+    await abandonQueuedProgress(client, {
+      fullName: job.fullName,
+      checkRunId: job.checkRunId,
+      summary: "Repository config (.hedgehog.yml) disables reviews.",
+    });
+    return null;
+  }
   if (pullRequest.state !== "open" || pullRequest.draft) {
     await abandonQueuedProgress(client, {
       fullName: job.fullName,
@@ -362,5 +376,24 @@ export async function prepareAcceptedJob<T extends PullRequestRef & { checkRunId
     botLogin,
     logger,
   });
-  return { ...job, headSha, ...progress };
+  return { ...job, headSha, ...progress, repoConfig };
+}
+
+async function loadRepoConfig(
+  client: ProgressClient,
+  fullName: string,
+  headSha: string | undefined,
+  logger: Logger,
+): Promise<RepoConfig | null> {
+  if (!headSha || typeof client.getFileContents !== "function") return null;
+  try {
+    const raw = await client.getFileContents(fullName, ".hedgehog.yml", headSha);
+    return parseRepoConfig(raw);
+  } catch (error) {
+    // A missing file is the common case; anything else is logged and ignored.
+    if (!(error instanceof GitHubHttpError && error.status === 404)) {
+      logger.error?.(`Could not read .hedgehog.yml for ${fullName}: ${errorMessage(error)}`);
+    }
+    return null;
+  }
 }

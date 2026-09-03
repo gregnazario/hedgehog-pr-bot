@@ -53,6 +53,7 @@ for (const repository of repositories.sort((a, b) => a.full_name.localeCompare(b
         config,
         checkRunId: prepared.checkRunId,
         eyesReactionId: prepared.eyesReactionId,
+        repoConfig: prepared.repoConfig,
       });
       if (result.status === "reviewed") reviewed += 1;
     } catch (error) {

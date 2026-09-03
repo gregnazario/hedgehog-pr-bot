@@ -282,11 +282,30 @@ ANTHROPIC_API_KEY=…</code></pre>
         </li>
       </ul>
 
+      <h2>Per-repository configuration (.hedgehog.yml)</h2>
+      <p>
+        Each repository can tune its own reviews by committing a flat
+        <code>.hedgehog.yml</code>:
+      </p>
+      <pre><code>skip: false
+ignore_paths: [dist, vendor]
+min_severity: Medium
+verify: false</code></pre>
+      <p>
+        <code>skip</code> silences the repository; <code>ignore_paths</code> drops
+        findings under path prefixes; <code>min_severity</code> sets a posting floor;
+        <code>verify</code> overrides the verification pass. Unknown keys and invalid
+        values are ignored, and none of these change the review fingerprint.
+      </p>
+
       <h2>Observability</h2>
       <p>
         <code>GET /healthz</code> answers liveness with the queue depth;
         <code>GET /metrics</code> serves Prometheus text — webhook events by type, accepted
-        and rejected counts, job results by status, ignore jobs, and queue depth.
+        and rejected counts, job results by status, ignore jobs, and queue depth — and
+        <code>GET /dashboard</code> renders a live, auto-refreshing page with recent
+        reviews and all counters (<code>/dashboard.json</code> for the same data as
+        JSON; <code>DASHBOARD_TOKEN</code> gates both when set).
       </p>
 
       <h2>Review and check outcomes</h2>

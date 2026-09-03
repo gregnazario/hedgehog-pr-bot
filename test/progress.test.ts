@@ -235,3 +235,34 @@ test("sweepStaleQueuedChecks completes only old queued checks", async () => {
   assert.ok(updates[0].title);
   assert.match(updates[0].title, /Stale queued check/);
 });
+
+test("prepareAcceptedJob honors skip: true in .hedgehog.yml", async () => {
+  const updates: any[] = [];
+  const client = reviewableClient({
+    getFileContents: async () => "skip: true\n",
+    updateCheckRun: async (_repo, _id, payload) => updates.push(payload),
+  });
+  const prepared = await prepareAcceptedJob(
+    client,
+    { fullName: "gregnazario/example", number: 7, checkRunId: 5 },
+    { author: "gregnazario", fingerprint: "fp" },
+  );
+  assert.equal(prepared, null);
+  assert.equal(updates[updates.length - 1].conclusion, "skipped");
+  assert.match(updates[updates.length - 1].summary, /hedgehog\.yml/);
+});
+
+test("prepareAcceptedJob surfaces repo config on accepted jobs", async () => {
+  const client = reviewableClient({
+    getFileContents: async (_repo, path) =>
+      path === ".hedgehog.yml" ? "ignore_paths: [gen]\nmin_severity: Medium\n" : "",
+  });
+  const prepared = await prepareAcceptedJob(
+    client,
+    { fullName: "gregnazario/example", number: 7 },
+    { author: "gregnazario", fingerprint: "fp", force: true },
+  );
+  assert.ok(prepared);
+  assert.equal(prepared.repoConfig?.minSeverity, "Medium");
+  assert.deepEqual(prepared.repoConfig?.ignorePaths, ["gen"]);
+});
