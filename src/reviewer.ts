@@ -533,6 +533,9 @@ function spawnPi(
     out.on("data", (chunk) => (stdout += chunk));
     err.on("data", (chunk) => (stderr += chunk));
     child.on("error", reject);
+    // A child that exits without reading stdin would EPIPE this write; the
+    // child's own exit path already decides the outcome.
+    stdin.on("error", () => {});
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
       reject(new Error(`Pi timed out after ${timeoutMs}ms`));
