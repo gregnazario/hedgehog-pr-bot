@@ -167,6 +167,21 @@
             </td>
           </tr>
           <tr>
+            <td><code>REVIEW_MEMORY_PATH</code></td>
+            <td>unset</td>
+            <td>JSONL file persisting <code>/ignore</code> fingerprints across restarts.</td>
+          </tr>
+          <tr>
+            <td><code>REVIEW_HISTORY_PATH</code></td>
+            <td>unset</td>
+            <td>JSONL file keeping dashboard history across restarts.</td>
+          </tr>
+          <tr>
+            <td><code>NOTIFY_WEBHOOK_FORMAT</code></td>
+            <td><code>json</code></td>
+            <td><code>slack</code> wraps notifications as <code>{text}</code> for Slack.</td>
+          </tr>
+          <tr>
             <td><code>MAX_DIFF_CHARS</code></td>
             <td><code>4000000</code></td>
             <td>Diff cap sent to each model; larger diffs are truncated.</td>

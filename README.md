@@ -289,6 +289,10 @@ The Compose image installs no project dependencies at all; it copies `src/` and
 
 ## Benchmark
 
+**Recorded baseline (2026-09-12): 100% recall / 74% precision / 1 clean-case
+finding** — GLM-5.3 via Pi 0.85.1, verification pass on, diff-only corpus;
+details in `benchmarks/reports/`.
+
 `benchmarks/` holds a ground-truth corpus: 16 hand-authored pull requests
 (14 with one planted, verifiable bug each — SQL injection, path traversal,
 hardcoded secrets, removed authorization, command injection, off-by-one,
