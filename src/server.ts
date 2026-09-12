@@ -146,7 +146,7 @@ export function createAppServer({
         });
         return;
       }
-      reviewStarts.push(Date.now());
+      recordReviewStart(reviewConfig.reviewCapPerHour ?? 20);
       const ignoredFingerprints = await loadIgnoreMemory(reviewConfig.memoryPath ?? "");
       const result = await reviewPullRequest({
         client,
@@ -238,10 +238,16 @@ export function createAppServer({
   };
 
   const reviewStarts: number[] = [];
-  const underReviewCap = (cap: number, now = Date.now()): boolean => {
-    if (cap <= 0) return true;
+  const pruneReviewStarts = (now = Date.now()): void => {
     while (reviewStarts.length > 0 && now - reviewStarts[0] >= 3_600_000) reviewStarts.shift();
-    return reviewStarts.length < cap;
+  };
+  const underReviewCap = (cap: number): boolean => {
+    pruneReviewStarts();
+    return cap <= 0 || reviewStarts.length < cap;
+  };
+  // No cap configured means nothing to count.
+  const recordReviewStart = (cap: number): void => {
+    if (cap > 0) reviewStarts.push(Date.now());
   };
 
   const server = createServer(async (request, response) => {

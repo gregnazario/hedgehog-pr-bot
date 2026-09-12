@@ -7,6 +7,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { createAppServer } from "../src/server.ts";
 import type { AppClient, NewCheckRun } from "../src/types.ts";
+import { reviewJobFromWebhook } from "../src/webhook.ts";
 
 test("serves health checks and authenticates webhook pings", async (t) => {
   const secret = "test-secret";
@@ -330,6 +331,19 @@ function sign(secret: string, body: Buffer): string {
   return `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`;
 }
 
+const waitFor = async (
+  label: string,
+  test: () => boolean | Promise<boolean>,
+  timeoutMs = 5_000,
+) => {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    if (await test()) return;
+    if (Date.now() > deadline) throw new Error(`timed out waiting for ${label}`);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+};
+
 async function postWebhook(port: number, secret: string, event: string, payload: unknown) {
   const body = Buffer.from(JSON.stringify(payload));
   return fetch(`http://127.0.0.1:${port}/github/webhook`, {
@@ -544,4 +558,15 @@ test("MAX_REVIEWS_PER_HOUR caps the webhook path with a skipped check", async (t
     };
     assert.ok(dashboard.jobs.some((job) => job.status === "capped"));
   });
+});
+
+test("/review <category> rejects prototype keys", () => {
+  const payload = {
+    action: "created",
+    installation: { id: 123 },
+    repository: { full_name: "gregnazario/example" },
+    comment: { id: 7, body: "/review constructor", user: { login: "gregnazario" } },
+    issue: { number: 42, user: { login: "gregnazario" }, labels: [], pull_request: {} },
+  };
+  assert.equal(reviewJobFromWebhook("issue_comment", payload, "gregnazario")?.focus, undefined);
 });

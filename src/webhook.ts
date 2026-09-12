@@ -131,7 +131,7 @@ function reviewFocusFromCommand(body: unknown): string[] | undefined {
     .trim()
     .split(/\s+/);
   const category = tokens[1]?.toLowerCase();
-  return category && category in REVIEW_FOCUS_GLOSSES ? [category] : undefined;
+  return category && Object.hasOwn(REVIEW_FOCUS_GLOSSES, category) ? [category] : undefined;
 }
 
 function describeJobFromComment(

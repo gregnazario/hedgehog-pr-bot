@@ -177,19 +177,17 @@ RestartSec=5
 WantedBy=multi-user.target
 ```
 
-Install Pi globally for the same user (`npm install -g --ignore-scripts
-@earendil-works/pi-coding-agent`), keep the checkout on `main`, and redeploy
-with `git pull && systemctl restart hedgehog-pr-bot`. The environment file
-carries the same variables as `.env`. A daily backup timer for the state
-directory (`/var/lib/hedgehog`: ignore memory and dashboard history) completes
-the setup:
-
-```sh
-/etc/cron.daily/hedgehog-backup
-```
-
-which tars the state directory to `/var/backups/hedgehog/` keeping the last 14
-days.
+Install Pi globally (`npm install -g --ignore-scripts
+@earendil-works/pi-coding-agent`) and make sure the install location is on the
+unit's PATH — a per-user prefix like `~/.npm-global/bin` is not, so either
+install system-wide or add `Environment=PATH=/usr/local/bin:…:$HOME/.npm-global/bin`
+to the unit. Keep the checkout on `main` and redeploy with `git pull &&
+systemctl restart hedgehog-pr-bot`. The environment file carries the same
+variables as `.env`. A daily backup of the state directory (`/var/lib/hedgehog`:
+ignore memory and dashboard history) completes the setup — install
+[`scripts/hedgehog-backup.sh`](scripts/hedgehog-backup.sh) as
+`/etc/cron.daily/hedgehog-backup`; it tars the state directory to
+`/var/backups/hedgehog/` keeping the last 14 days.
 
 ## Operations
 
