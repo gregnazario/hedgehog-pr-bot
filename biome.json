@@ -6,7 +6,10 @@
     "useIgnoreFile": true
   },
   "files": {
-    "ignoreUnknown": true
+    "ignoreUnknown": true,
+    "includes": [
+      "!benchmarks/cases/**"
+    ]
   },
   "formatter": {
     "enabled": true,
@@ -37,7 +40,9 @@
   },
   "overrides": [
     {
-      "includes": ["test/**"],
+      "includes": [
+        "test/**"
+      ],
       "linter": {
         "rules": {
           "suspicious": {
