@@ -134,7 +134,7 @@ and key files are ignored by Git. `.env.example` contains placeholders only.
 | `DASHBOARD_TOKEN` | unset | When set, `/dashboard` requires this token (`?token=` or Bearer) |
 | `REVIEW_HISTORY_PATH` | unset | JSONL file keeping dashboard history across restarts |
 | `NOTIFY_WEBHOOK_FORMAT` | `json` | `slack` wraps notifications as `{text}` for Slack incoming webhooks |
-| `PI_VERSION` | `0.84.4` | Pi version stamped into review footers |
+| `PI_VERSION` | `0.85.1` | Pi version stamped into review footers |
 | `BOT_LOGIN` | `hedgehog-pr-bot` | The App's bot account slug; set it when self-hosting under a different App name |
 | `MAX_DIFF_CHARS` | `4000000` | Maximum diff characters sent to each model |
 | `HOST` | `0.0.0.0` | Address inside the container |
