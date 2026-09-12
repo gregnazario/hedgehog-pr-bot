@@ -1,0 +1,12 @@
+{
+  "title": "Stripe refund helper",
+  "clean": false,
+  "truth": [
+    {
+      "path": "services/payments.ts",
+      "anchor": "sk_live_FAKEKEY",
+      "class": "security",
+      "note": "Live secret key hardcoded, replacing the environment variable"
+    }
+  ]
+}

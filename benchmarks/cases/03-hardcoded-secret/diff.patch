@@ -1,0 +1,9 @@
+diff --git a/services/payments.ts b/services/payments.ts
+--- a/services/payments.ts
++++ b/services/payments.ts
+@@ -1,4 +1,4 @@
+-const STRIPE_KEY = process.env.STRIPE_KEY;
++const STRIPE_KEY = "sk_live_FAKEKEY-SUBSTITUTE-DO-NOT-USE";
+ 
+ export async function refundCharge(chargeId: string) {
+   const res = await fetch("https://api.stripe.com/v1/refunds", {

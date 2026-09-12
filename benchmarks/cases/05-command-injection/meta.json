@@ -1,0 +1,12 @@
+{
+  "title": "Thumbnail generator",
+  "clean": false,
+  "truth": [
+    {
+      "path": "lib/thumbnail.py",
+      "anchor": "shell=True",
+      "class": "security",
+      "note": "Command injection: untrusted src/size interpolated into a shell string"
+    }
+  ]
+}

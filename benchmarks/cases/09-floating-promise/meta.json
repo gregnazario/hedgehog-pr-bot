@@ -1,0 +1,12 @@
+{
+  "title": "Billing webhook handler",
+  "clean": false,
+  "truth": [
+    {
+      "path": "billing/webhook.py",
+      "anchor": "record(charge)",
+      "class": "correctness",
+      "note": "Floating promise: record() is no longer awaited, so failures are lost and ok() can race ahead"
+    }
+  ]
+}

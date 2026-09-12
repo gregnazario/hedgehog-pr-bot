@@ -3,3 +3,4 @@
 *.pem
 *.key
 node_modules/
+benchmarks/reports/

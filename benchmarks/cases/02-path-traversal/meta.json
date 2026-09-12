@@ -1,0 +1,12 @@
+{
+  "title": "Report download route",
+  "clean": false,
+  "truth": [
+    {
+      "path": "api/download.py",
+      "anchor": "os.path.join(SAFE_ROOT, name)",
+      "class": "security",
+      "note": "Path traversal: the realpath containment check was dropped, so ../ escapes SAFE_ROOT"
+    }
+  ]
+}

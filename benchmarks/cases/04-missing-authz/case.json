@@ -1,0 +1,14 @@
+{
+  "name": "04-missing-authz",
+  "title": "Admin impersonation endpoint",
+  "clean": false,
+  "truth": [
+    {
+      "path": "admin/impersonate.go",
+      "anchor": "startSession(w, r.URL.Query().Get(\"user\"))",
+      "class": "security",
+      "note": "Authorization check removed: any caller can impersonate any user",
+      "line": 8
+    }
+  ]
+}

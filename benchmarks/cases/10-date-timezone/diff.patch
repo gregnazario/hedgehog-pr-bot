@@ -1,0 +1,13 @@
+diff --git a/report/range.ts b/report/range.ts
+--- a/report/range.ts
++++ b/report/range.ts
+@@ -1,6 +1,7 @@
+ export function dayRange(isoDate: string): [Date, Date] {
+-  const start = new Date(`${isoDate}T00:00:00Z`);
++  const [y, m, d] = isoDate.split("-").map(Number);
++  const start = new Date(y, m, d);
+   const end = new Date(start);
+-  end.setUTCDate(end.getUTCDate() + 1);
++  end.setDate(end.getDate() + 1);
+   return [start, end];
+ }

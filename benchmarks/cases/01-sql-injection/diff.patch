@@ -1,0 +1,13 @@
+diff --git a/routes/users.ts b/routes/users.ts
+--- a/routes/users.ts
++++ b/routes/users.ts
+@@ -6,8 +6,7 @@
+ users.get("/search", async (req, res) => {
+   const q = String(req.query.q ?? "");
+   const rows = await db.query(
+-    `SELECT id, name, email FROM users WHERE name ILIKE '%' || $1 || '%' LIMIT 20`,
+-    [q],
++    `SELECT id, name, email FROM users WHERE name ILIKE '%${q}%' LIMIT 20`,
+   );
+   res.json(rows);
+ });

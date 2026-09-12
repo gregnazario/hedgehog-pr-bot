@@ -1,0 +1,13 @@
+diff --git a/package.json b/package.json
+--- a/package.json
++++ b/package.json
+@@ -1,7 +1,7 @@
+ {
+   "name": "widget-web",
+   "dependencies": {
+-    "react": "19.1.4",
+-    "react-dom": "19.1.4"
++    "react": "19.2.0",
++    "react-dom": "19.2.0"
+   }
+ }

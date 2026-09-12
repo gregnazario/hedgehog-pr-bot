@@ -1,0 +1,14 @@
+{
+  "name": "07-assignment-in-if",
+  "title": "Moderator check",
+  "clean": false,
+  "truth": [
+    {
+      "path": "auth/session.ts",
+      "anchor": "session.role = \"moderator\"",
+      "class": "correctness",
+      "note": "Assignment in condition: every user becomes a moderator and the check always passes",
+      "line": 2
+    }
+  ]
+}

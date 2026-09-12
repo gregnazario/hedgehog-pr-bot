@@ -1,0 +1,10 @@
+diff --git a/auth/session.ts b/auth/session.ts
+--- a/auth/session.ts
++++ b/auth/session.ts
+@@ -1,5 +1,5 @@
+ export function canModerate(session: Session): boolean {
+-  if (session.role === "moderator") {
++  if ((session.role = "moderator")) {
+     return true;
+   }
+   return false;

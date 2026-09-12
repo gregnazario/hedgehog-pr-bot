@@ -1,0 +1,11 @@
+diff --git a/queue/worker.py b/queue/worker.py
+--- a/queue/worker.py
++++ b/queue/worker.py
+@@ -2,6 +2,6 @@
+     try:
+         return run(job)
+     except TransientError:
+-        if attempts >= MAX_ATTEMPTS:
++        if attempts < MAX_ATTEMPTS:
+             raise
+         return process(job, attempts + 1)

@@ -276,6 +276,8 @@ Node test suite:
 bun install        # dev-only: typescript, @types/node, @biomejs/biome
 bun run test       # node --test suite
 bun run coverage   # suite + Node coverage report; fails under 85% lines / 75% branches / 80% functions
+bun run benchmark  # run the review benchmark against the corpus (real model; needs Pi + API keys)
+bun run benchmark:dry  # harness check with stubbed models
 bun run typecheck  # tsc --noEmit over src, test, and scripts
 bun run lint       # biome check: formatting, import order, lint rules
 bun run format     # biome format --write
@@ -284,6 +286,20 @@ bun run fix        # biome check --write: format + safe lint/import fixes
 
 The Compose image installs no project dependencies at all; it copies `src/` and
 `scripts/` and runs `node src/server.ts` directly.
+
+## Benchmark
+
+`benchmarks/` holds a ground-truth corpus: 16 hand-authored pull requests
+(14 with one planted, verifiable bug each — SQL injection, path traversal,
+hardcoded secrets, removed authorization, command injection, off-by-one,
+assignment-in-condition, inverted retry guard, floating promise, timezone
+parsing, N+1, quadratic scan, dropped timeout, swallowed migration error —
+plus 2 clean changes as false-positive traps). `bun run benchmark` runs the
+real review pipeline over every case and scores recall, precision, and
+clean-case noise; reports land in `benchmarks/reports/`. The corpus is
+diff-only by construction, so scores measure the no-file-context
+configuration; it is also reusable as a neutral substrate for comparing
+other reviewers. Not wired into CI — it spends model budget.
 
 Coverage baseline (2026-09): ~88% lines / ~79% branches / ~83% functions.
 Strongest: signals, webhook, metrics, memory, notify. Known gaps: the

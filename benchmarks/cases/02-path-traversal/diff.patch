@@ -1,0 +1,12 @@
+diff --git a/api/download.py b/api/download.py
+--- a/api/download.py
++++ b/api/download.py
+@@ -5,7 +5,5 @@
+ 
+ def download():
+     name = request.args.get("name", "")
+-    path = os.path.realpath(os.path.join(SAFE_ROOT, name))
+-    if not path.startswith(SAFE_ROOT + os.sep):
+-        return "forbidden", 403
++    path = os.path.join(SAFE_ROOT, name)
+     return send_file(path)

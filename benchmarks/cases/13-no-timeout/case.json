@@ -1,0 +1,14 @@
+{
+  "name": "13-no-timeout",
+  "title": "Webhook delivery client",
+  "clean": false,
+  "truth": [
+    {
+      "path": "webhooks/stripe.py",
+      "anchor": "httpx.AsyncClient()",
+      "class": "reliability",
+      "note": "Timeout dropped: a hung endpoint stalls the delivery worker indefinitely",
+      "line": 4
+    }
+  ]
+}

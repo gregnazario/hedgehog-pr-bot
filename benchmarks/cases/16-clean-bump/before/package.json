@@ -1,0 +1,7 @@
+{
+  "name": "widget-web",
+  "dependencies": {
+    "react": "19.1.4",
+    "react-dom": "19.1.4"
+  }
+}

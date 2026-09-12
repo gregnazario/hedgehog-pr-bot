@@ -1,0 +1,12 @@
+{
+  "title": "Dedupe before indexing",
+  "clean": false,
+  "truth": [
+    {
+      "path": "search/dedupe.py",
+      "anchor": "if row not in out",
+      "class": "performance",
+      "note": "Quadratic membership check on a list instead of the previous set-based key check"
+    }
+  ]
+}
