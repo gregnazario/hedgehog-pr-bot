@@ -189,6 +189,17 @@ docker compose up -d --build   # after pulling changes</code></pre>
         <li><code>GET /metrics</code> — Prometheus counters for scraping.</li>
       </ul>
 
+      <h2>Is it any good?</h2>
+      <p>
+        The repository ships a ground-truth benchmark: 16 hand-authored pull
+        requests (14 with one planted, verifiable bug; 2 clean traps) run
+        through the real review pipeline, scored on recall, precision, and
+        false positives. The recorded baseline — GLM-5.3, verification pass on
+        — is <strong>100% recall / 74% precision / 1 clean-case finding</strong>.
+        Run it yourself against your own model configuration:
+        <code>bun run benchmark</code> in the checkout.
+      </p>
+
       <h2>Costs and limits</h2>
       <ul>
         <li>

@@ -107,9 +107,15 @@
           and completed checks remind you of the re-run command.
         </li>
         <li>
+          <strong>Measured, not just claimed.</strong> A 16-case ground-truth benchmark
+          runs the real pipeline against planted bugs: <strong>100% recall</strong> (all
+          14 bugs found), <strong>74% precision</strong>, 1 false positive on clean
+          changes — the baseline every model or prompt change is re-measured against.
+        </li>
+        <li>
           <strong>Boring stack.</strong> One Node.js process, zero runtime dependencies,
-          strict TypeScript executed natively, Docker Compose for deployment, Prometheus
-          metrics on <code>/metrics</code>.
+          strict TypeScript executed natively, Docker Compose or systemd for deployment,
+          Prometheus metrics on <code>/metrics</code>.
         </li>
       </ul>
 
