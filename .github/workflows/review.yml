@@ -39,7 +39,7 @@ jobs:
           permission-checks: write
 
       - name: Install Pi
-        run: npm install --global --ignore-scripts @earendil-works/pi-coding-agent@0.84.4
+        run: npm install --global --ignore-scripts @earendil-works/pi-coding-agent@0.85.1
 
       - name: Review new PR commits
         env:
