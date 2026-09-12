@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { REVIEW_FOCUS_GLOSSES } from "./repo-config.ts";
 import {
   hasSkipReviewLabel,
   isDescribeCommand,
@@ -112,14 +113,25 @@ function reviewJobFromComment(
   if (!fullName || !installationId || number === undefined || !Number.isSafeInteger(number))
     return null;
   if (!isReviewedAuthor(payload.issue.user?.login, authors)) return null;
+  const focus = reviewFocusFromCommand(payload.comment?.body);
   return {
     key: `${fullName}#${number}`,
     fullName,
     number,
     installationId,
     force: true,
+    ...(focus ? { focus } : {}),
     triggerCommentId: payload.comment?.id,
   };
+}
+
+/** "/review security" narrows that one pass to a focus category. */
+function reviewFocusFromCommand(body: unknown): string[] | undefined {
+  const tokens = String(body ?? "")
+    .trim()
+    .split(/\s+/);
+  const category = tokens[1]?.toLowerCase();
+  return category && category in REVIEW_FOCUS_GLOSSES ? [category] : undefined;
 }
 
 function describeJobFromComment(

@@ -47,6 +47,8 @@ export interface ReviewRequest {
   verifyModel?: (bundle: string, modelSpec: ModelSpec) => Promise<string>;
   ignoredFingerprints?: ReadonlySet<string>;
   repoConfig?: RepoConfig | null;
+  /** Focus categories from a /review <category> command; beats repo config. */
+  focusOverride?: readonly string[];
   /** Fingerprint folded with per-repo models; defaults to the server's. */
   reviewFingerprint?: string;
   logger?: Logger;
@@ -64,10 +66,11 @@ export async function reviewPullRequest({
   verifyModel,
   ignoredFingerprints = new Set<string>(),
   repoConfig = null,
+  focusOverride,
   reviewFingerprint,
   logger = console,
 }: ReviewRequest): Promise<ReviewResult> {
-  const run = runModel ?? defaultRunModel(config, repoConfig);
+  const run = runModel ?? defaultRunModel(config, repoConfig, runPi, focusOverride);
   const verify =
     verifyModel ??
     ((bundle, modelSpec) => runPiVerify(bundle, modelSpec, config.piTimeoutMs ?? 600_000));
@@ -457,14 +460,15 @@ export function runPi(
   return spawnPi(buildReviewSystemPrompt(focus), reviewBundle, modelSpec, timeoutMs);
 }
 
-/** The production model runner: timeout and repo focus from config. */
+/** The production model runner: timeout and effective focus from config. */
 export function defaultRunModel(
   config: ReviewConfig,
   repoConfig: RepoConfig | null,
   runPiImpl: typeof runPi = runPi,
+  focusOverride?: readonly string[],
 ): (bundle: string, modelSpec: ModelSpec) => Promise<string> {
   return (bundle, modelSpec) =>
-    runPiImpl(bundle, modelSpec, config.piTimeoutMs ?? 600_000, repoConfig?.focus);
+    runPiImpl(bundle, modelSpec, config.piTimeoutMs ?? 600_000, focusOverride ?? repoConfig?.focus);
 }
 
 /** Drafts a pull-request description from the diff (used by /describe). */
@@ -493,7 +497,7 @@ function spawnPi(
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = spawn(
-      "pi",
+      process.env.PI_BIN ?? "pi",
       [
         "--provider",
         modelSpec.provider,

@@ -110,6 +110,15 @@
             </td>
           </tr>
           <tr>
+            <td><code>MAX_REVIEWS_PER_HOUR</code></td>
+            <td><code>20</code></td>
+            <td>
+              Rolling one-hour cap on started reviews; <code>0</code> disables.
+              Over-cap jobs complete their check as skipped and retry on the
+              next push.
+            </td>
+          </tr>
+          <tr>
             <td><code>PI_TIMEOUT_MS</code></td>
             <td><code>600000</code></td>
             <td>Wall-clock cap for one model run; a hung run cannot block the queue.</td>

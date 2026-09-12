@@ -189,3 +189,31 @@ test("/ignore replies under review comments enqueue ignore jobs", () => {
     null,
   );
 });
+
+test("/review <category> narrows the pass to that focus", () => {
+  const payload = {
+    action: "created",
+    installation: { id: 123 },
+    repository: { full_name: "gregnazario/example" },
+    comment: { id: 7, body: "/review security please", user: { login: "gregnazario" } },
+    issue: { number: 42, user: { login: "gregnazario" }, labels: [], pull_request: {} },
+  };
+  const job = reviewJobFromWebhook("issue_comment", payload, "gregnazario");
+  assert.deepEqual(job?.focus, ["security"]);
+  assert.equal(
+    reviewJobFromWebhook(
+      "issue_comment",
+      { ...payload, comment: { ...payload.comment, body: "/review vibes" } },
+      "gregnazario",
+    )?.focus,
+    undefined,
+  );
+  assert.equal(
+    reviewJobFromWebhook(
+      "issue_comment",
+      { ...payload, comment: { ...payload.comment, body: "/review" } },
+      "gregnazario",
+    )?.focus,
+    undefined,
+  );
+});

@@ -54,6 +54,11 @@ export function loadReviewConfig(env: EnvSource = process.env): ReviewConfig {
     botLogin: normalizeBotLogin(env.BOT_LOGIN || DEFAULT_BOT_LOGIN),
     memoryPath: env.REVIEW_MEMORY_PATH || "",
     piTimeoutMs: positiveInteger(env.PI_TIMEOUT_MS, 600_000),
+    // 0 disables; a pathological push loop must not burn the model plan.
+    reviewCapPerHour: (() => {
+      const raw = Number.parseInt(env.MAX_REVIEWS_PER_HOUR ?? "", 10);
+      return Number.isSafeInteger(raw) && raw >= 0 ? raw : 20;
+    })(),
     notifyWebhook: env.NOTIFY_WEBHOOK || "",
     notifyWebhookFormat: env.NOTIFY_WEBHOOK_FORMAT === "slack" ? "slack" : "json",
     maxDiffChars: positiveInteger(env.MAX_DIFF_CHARS, 4_000_000),

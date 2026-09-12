@@ -8,6 +8,18 @@ All notable changes to hedgehog-pr-bot are documented here. The format follows
 
 ### Added
 
+- `MAX_REVIEWS_PER_HOUR` (default 20, `0` disables) caps started reviews on a
+  rolling one-hour window so a pathological push loop cannot burn the model
+  plan; over-cap jobs finish their check as skipped.
+- `/review <category>` narrows a single forced pass to a focus category,
+  overriding the repository's `focus:`.
+- `PI_BIN` environment seam makes the real subprocess injectable in tests; the
+  `spawnPi` body (exit, stderr, timeout) is now covered by the suite.
+- Webhook-level integration tests drive `/describe` and `/ignore` end to end.
+- CodeQL code scanning workflow; systemd deployment documentation with a state
+  backup recipe.
+- Coverage is now 91% lines / 80% branches / 86% functions after the new tests.
+
 - `bun run coverage` runs the suite with Node's built-in coverage (no extra
   dependencies); CI prints the report on every run and enforces floors of 85%
   lines / 75% branches / 80% functions. The baseline and known-gap notes live

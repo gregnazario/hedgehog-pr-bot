@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
+import { mkdtemp, writeFile } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import { createAppServer } from "../src/server.ts";
-import type { NewCheckRun } from "../src/types.ts";
+import type { AppClient, NewCheckRun } from "../src/types.ts";
 
 test("serves health checks and authenticates webhook pings", async (t) => {
   const secret = "test-secret";
@@ -299,4 +302,246 @@ test("dashboard requires its token when one is configured", async (t) => {
   const { port } = server.address() as AddressInfo;
   assert.equal((await fetch(`http://127.0.0.1:${port}/dashboard`)).status, 404);
   assert.equal((await fetch(`http://127.0.0.1:${port}/dashboard?token=letmein`)).status, 200);
+});
+
+const fakeModelBin = async (): Promise<string> => {
+  const dir = await mkdtemp(join(tmpdir(), "hedgehog-modelbin-"));
+  const script = join(dir, "model");
+  await writeFile(
+    script,
+    '#!/bin/sh\necho \'{"title":"Add the export","body":"- adds the export","summary":"Checked.","findings":[]}\'\n',
+    { mode: 0o755 },
+  );
+  return script;
+};
+
+const withModelBin = async (fn: () => Promise<unknown>) => {
+  const previous = process.env.PI_BIN;
+  process.env.PI_BIN = await fakeModelBin();
+  try {
+    await fn();
+  } finally {
+    if (previous === undefined) delete process.env.PI_BIN;
+    else process.env.PI_BIN = previous;
+  }
+};
+
+function sign(secret: string, body: Buffer): string {
+  return `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`;
+}
+
+async function postWebhook(port: number, secret: string, event: string, payload: unknown) {
+  const body = Buffer.from(JSON.stringify(payload));
+  return fetch(`http://127.0.0.1:${port}/github/webhook`, {
+    method: "POST",
+    headers: {
+      "X-GitHub-Event": event,
+      "X-Hub-Signature-256": sign(secret, body),
+    },
+    body,
+  });
+}
+
+const fullReviewConfig = {
+  author: "gregnazario",
+  authors: ["gregnazario"],
+  botLogin: "hedgehog-pr-bot",
+  fingerprint: "abc123",
+  models: [{ provider: "zai", model: "glm-5.3", thinking: "high", label: "zai/glm-5.3:high" }],
+  maxDiffChars: 1000,
+};
+
+test("/describe flows from webhook to posted description comment", async (t) => {
+  await withModelBin(async () => {
+    const secret = "test-secret";
+    const comments: string[] = [];
+    const { server } = createAppServer({
+      webhookSecret: secret,
+      tokenProvider: { get: async () => "token" },
+      reviewConfig: fullReviewConfig,
+      logger: { log() {}, error() {} },
+      createClient: () => ({
+        getPullRequest: async () => ({
+          number: 7,
+          state: "open",
+          title: "Old",
+          user: { login: "gregnazario" },
+          head: { sha: "abc", ref: "f" },
+          base: { ref: "main", sha: "base" },
+        }),
+        getPullRequestDiff: async () =>
+          "diff --git a/x.ts b/x.ts\n--- a/x.ts\n+++ b/x.ts\n@@ -1,1 +1,2 @@\n ctx\n+added\n",
+        listPullRequestReviews: async () => [],
+        createCheckRun: async () => ({ id: 1 }),
+        createIssueComment: async (_repo, _number, body) => {
+          comments.push(body);
+        },
+        createPullRequestReview: async () => {},
+      }),
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+    t.after(() => new Promise((resolve) => server.close(resolve)));
+    const { port } = server.address() as AddressInfo;
+
+    const response = await postWebhook(port, secret, "issue_comment", {
+      action: "created",
+      installation: { id: 1 },
+      repository: { full_name: "gregnazario/example" },
+      comment: { id: 55, body: "/describe", user: { login: "gregnazario" } },
+      issue: { number: 7, user: { login: "gregnazario" }, labels: [], pull_request: {} },
+    });
+    assert.equal(response.status, 202);
+    assert.deepEqual(await response.json(), { accepted: true });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    assert.equal(comments.length, 1);
+    assert.match(comments[0], /Suggested description/);
+    const metrics = await (await fetch(`http://127.0.0.1:${port}/metrics`)).text();
+    assert.match(metrics, /describe_jobs_total 1/);
+    const dashboard = (await (await fetch(`http://127.0.0.1:${port}/dashboard.json`)).json()) as {
+      jobs: Array<{ status: string }>;
+    };
+    assert.equal(dashboard.jobs[0].status, "described");
+  });
+});
+
+test("/ignore flows from webhook to resolved thread and ack", async (t) => {
+  await withModelBin(async () => {
+    const secret = "test-secret";
+    const resolved: string[] = [];
+    const reactions: Array<[number, string]> = [];
+    const { server } = createAppServer({
+      webhookSecret: secret,
+      tokenProvider: { get: async () => "token" },
+      reviewConfig: {
+        ...fullReviewConfig,
+        memoryPath: join(await mkdtemp(join(tmpdir(), "hedgehog-mem-")), "ignores.json"),
+      },
+      logger: { log() {}, error() {} },
+      createClient: () =>
+        ({
+          getPullRequest: async () => ({
+            number: 7,
+            state: "open",
+            title: "T",
+            user: { login: "gregnazario" },
+            head: { sha: "abc", ref: "f" },
+          }),
+          getPullRequestDiff: async () => "",
+          listPullRequestReviews: async () => [],
+          createCheckRun: async () => ({ id: 1 }),
+          createPullRequestReview: async () => {},
+          getReviewComment: async () => ({
+            id: 501,
+            path: "src/app.mjs",
+            body: "**High:** The cache is never cleared.",
+            user: { login: "hedgehog-pr-bot[bot]" },
+          }),
+          listUnresolvedHedgehogThreads: async () => [{ commentId: 501, threadId: "T501" }],
+          resolveReviewThread: async (threadId: string) => resolved.push(threadId),
+          reactToReviewComment: async (_repo: string, commentId: number, content: string) => {
+            reactions.push([commentId, content]);
+          },
+        }) as unknown as AppClient,
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+    t.after(() => new Promise((resolve) => server.close(resolve)));
+    const { port } = server.address() as AddressInfo;
+
+    const response = await postWebhook(port, secret, "pull_request_review_comment", {
+      action: "created",
+      installation: { id: 1 },
+      repository: { full_name: "gregnazario/example" },
+      pull_request: { number: 7 },
+      comment: { id: 602, in_reply_to_id: 501, body: "/ignore", user: { login: "gregnazario" } },
+    });
+    assert.equal(response.status, 202);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    assert.deepEqual(resolved, ["T501"]);
+    assert.deepEqual(reactions, [[602, "+1"]]);
+    const metrics = await (await fetch(`http://127.0.0.1:${port}/metrics`)).text();
+    assert.match(metrics, /ignore_jobs_total 1/);
+  });
+});
+
+test("MAX_REVIEWS_PER_HOUR caps the webhook path with a skipped check", async (t) => {
+  await withModelBin(async () => {
+    const secret = "test-secret";
+    const updates: any[] = [];
+    const reviews: any[] = [];
+    let pulls = 0;
+    const { server } = createAppServer({
+      webhookSecret: secret,
+      tokenProvider: { get: async () => "token" },
+      reviewConfig: { ...fullReviewConfig, reviewCapPerHour: 1 },
+      logger: { log() {}, error() {} },
+      createClient: () =>
+        ({
+          getPullRequest: async () => {
+            pulls += 1;
+            return {
+              number: 7,
+              state: "open",
+              draft: false,
+              user: { login: "gregnazario" },
+              head: { sha: `abc${pulls}`, ref: "f" },
+              base: { ref: "main" },
+            };
+          },
+          listIssueLabels: async () => [],
+          createIssueReaction: async () => ({ id: 1 }),
+          createCheckRun: async () => ({ id: 9 }),
+          updateCheckRun: async (_repo: string, _id: number, payload: unknown) =>
+            updates.push(payload),
+          listPullRequestReviews: async () => [],
+          getPullRequestDiff: async () => "",
+          createPullRequestReview: async (_repo: string, _number: number, payload: unknown) =>
+            reviews.push(payload),
+          createIssueComment: async () => {},
+        }) as unknown as AppClient,
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+    t.after(() => new Promise((resolve) => server.close(resolve)));
+    const { port } = server.address() as AddressInfo;
+
+    for (const number of [7, 8]) {
+      const body = Buffer.from(
+        JSON.stringify({
+          action: "synchronize",
+          number,
+          installation: { id: 1 },
+          repository: { full_name: "gregnazario/example" },
+          pull_request: {
+            draft: false,
+            user: { login: "gregnazario" },
+            head: { sha: `head${number}` },
+            labels: [],
+          },
+        }),
+      );
+      const response = await fetch(`http://127.0.0.1:${port}/github/webhook`, {
+        method: "POST",
+        headers: {
+          "X-GitHub-Event": "pull_request",
+          "X-Hub-Signature-256": `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`,
+        },
+        body,
+      });
+      assert.equal(response.status, 202);
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+
+    assert.equal(reviews.length, 1);
+    const capped = updates.find(
+      (update) => update.conclusion === "skipped" && /cap/i.test(update.title ?? ""),
+    );
+    assert.ok(capped, `expected a cap skip among ${JSON.stringify(updates.map((u) => u.title))}`);
+    const metrics = await (await fetch(`http://127.0.0.1:${port}/metrics`)).text();
+    assert.match(metrics, /review_cap_skips_total 1/);
+    const dashboard = (await (await fetch(`http://127.0.0.1:${port}/dashboard.json`)).json()) as {
+      jobs: Array<{ status: string }>;
+    };
+    assert.ok(dashboard.jobs.some((job) => job.status === "capped"));
+  });
 });

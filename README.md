@@ -129,6 +129,7 @@ and key files are ignored by Git. `.env.example` contains placeholders only.
 | `REVIEW_MEMORY_PATH` | unset | File persisting `/ignore` fingerprints; unset disables the memory |
 | `LOG_FORMAT` | `text` | `json` emits one `{time, level, message}` object per log line |
 | `PI_TIMEOUT_MS` | `600000` | Wall-clock cap for one model run; protects the serial queue |
+| `MAX_REVIEWS_PER_HOUR` | `20` | Rolling one-hour cap on started reviews; `0` disables. Protects the model plan from push loops |
 | `NOTIFY_WEBHOOK` | unset | URL posted each review result (Slack/Discord/generic) |
 | `DASHBOARD_TOKEN` | unset | When set, `/dashboard` requires this token (`?token=` or Bearer) |
 | `REVIEW_HISTORY_PATH` | unset | JSONL file keeping dashboard history across restarts |
@@ -151,6 +152,44 @@ PI_MODELS=zai/glm-5.3:high,zai/glm-4.7:high
 Changing `PI_MODELS` changes the review fingerprint, so the recovery scan reviews existing
 open PRs again even if their head SHA is unchanged. Pi supports other providers; add only
 the corresponding API-key environment variable needed by each configured model.
+
+## Running under systemd
+
+The production deployment runs the server directly under systemd instead of
+Docker — the same code, no container. A minimal unit:
+
+```ini
+[Unit]
+Description=Event-driven GitHub pull request reviewer.
+After=network-online.target
+
+[Service]
+User=bot
+WorkingDirectory=/opt/hedgehog-pr-bot
+EnvironmentFile=/etc/hedgehog-pr-bot/environment
+Environment=HOST=127.0.0.1
+Environment=PORT=3100
+ExecStart=/usr/bin/node src/server.ts
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Install Pi globally for the same user (`npm install -g --ignore-scripts
+@earendil-works/pi-coding-agent`), keep the checkout on `main`, and redeploy
+with `git pull && systemctl restart hedgehog-pr-bot`. The environment file
+carries the same variables as `.env`. A daily backup timer for the state
+directory (`/var/lib/hedgehog`: ignore memory and dashboard history) completes
+the setup:
+
+```sh
+/etc/cron.daily/hedgehog-backup
+```
+
+which tars the state directory to `/var/backups/hedgehog/` keeping the last 14
+days.
 
 ## Operations
 
@@ -216,7 +255,9 @@ outside the focus are still reported when Critical — and `instructions` remain
 the escape hatch for anything the taxonomy does not express.
 
 Comment `/describe` on a PR to have hedgehog draft a title and description from
-the diff and post them as a comment to copy into the PR. For automatic TLS on a spare domain, run
+the diff and post them as a comment to copy into the PR. `/review security`
+(any focus category) narrows that one pass to a category, overriding the
+repository's `focus:` for the run. For automatic TLS on a spare domain, run
 `docker compose --profile tls up -d` with `DOMAIN` set — a Caddy sidecar handles
 certificates. A ready-made image is published to
 `ghcr.io/gregnazario/hedgehog-pr-bot:latest` on every push to main. Self-hosters can
