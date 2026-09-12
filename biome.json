@@ -7,9 +7,7 @@
   },
   "files": {
     "ignoreUnknown": true,
-    "includes": [
-      "!benchmarks/cases"
-    ]
+    "includes": ["**", "!benchmarks/cases"]
   },
   "formatter": {
     "enabled": true,
@@ -40,9 +38,7 @@
   },
   "overrides": [
     {
-      "includes": [
-        "test/**"
-      ],
+      "includes": ["test/**"],
       "linter": {
         "rules": {
           "suspicious": {
