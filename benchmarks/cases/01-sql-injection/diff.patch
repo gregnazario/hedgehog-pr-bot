@@ -1,7 +1,8 @@
 diff --git a/routes/users.ts b/routes/users.ts
+index 330c047..d89efb2 100644
 --- a/routes/users.ts
 +++ b/routes/users.ts
-@@ -6,8 +6,7 @@
+@@ -6,8 +6,7 @@ export const users = Router();
  users.get("/search", async (req, res) => {
    const q = String(req.query.q ?? "");
    const rows = await db.query(

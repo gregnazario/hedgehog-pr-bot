@@ -1,4 +1,5 @@
 diff --git a/report/range.ts b/report/range.ts
+index 4b1f546..12262df 100644
 --- a/report/range.ts
 +++ b/report/range.ts
 @@ -1,6 +1,7 @@

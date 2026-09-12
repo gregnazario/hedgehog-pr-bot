@@ -1,7 +1,8 @@
 diff --git a/api/download.py b/api/download.py
+index aa5aaf2..f7139ab 100644
 --- a/api/download.py
 +++ b/api/download.py
-@@ -5,7 +5,5 @@
+@@ -5,7 +5,5 @@ SAFE_ROOT = "/srv/reports"
  
  def download():
      name = request.args.get("name", "")

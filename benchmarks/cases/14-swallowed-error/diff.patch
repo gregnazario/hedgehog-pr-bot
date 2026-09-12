@@ -1,4 +1,5 @@
 diff --git a/migrations/017.py b/migrations/017.py
+index a6c9612..2b2a0fe 100644
 --- a/migrations/017.py
 +++ b/migrations/017.py
 @@ -1,4 +1,7 @@

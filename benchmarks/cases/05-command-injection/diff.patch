@@ -1,7 +1,8 @@
 diff --git a/lib/thumbnail.py b/lib/thumbnail.py
+index 69aa34a..b42bb50 100644
 --- a/lib/thumbnail.py
 +++ b/lib/thumbnail.py
-@@ -2,7 +2,7 @@
+@@ -2,7 +2,7 @@ import subprocess
  
  def make_thumbnail(src: str, size: str) -> bytes:
      out = subprocess.run(
