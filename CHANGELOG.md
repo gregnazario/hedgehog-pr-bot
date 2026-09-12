@@ -8,6 +8,16 @@ All notable changes to hedgehog-pr-bot are documented here. The format follows
 
 ### Added
 
+- `benchmarks/`: a 16-case ground-truth corpus (14 planted bugs across
+  security/correctness/performance/reliability plus 2 clean traps) and a
+  runner (`bun run benchmark`) that scores the real pipeline's recall,
+  precision, and false-positive rate; reports land in `benchmarks/reports/`.
+  Dry mode (`--dry`) validates the harness without model spend.
+
+## [0.3.0] - 2026-09-12
+
+### Added
+
 - `MAX_REVIEWS_PER_HOUR` (default 20, `0` disables) caps started reviews on a
   rolling one-hour window so a pathological push loop cannot burn the model
   plan; over-cap jobs finish their check as skipped.

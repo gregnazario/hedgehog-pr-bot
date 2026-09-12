@@ -1,0 +1,13 @@
+diff --git a/lib/thumbnail.py b/lib/thumbnail.py
+--- a/lib/thumbnail.py
++++ b/lib/thumbnail.py
+@@ -2,7 +2,7 @@
+ 
+ def make_thumbnail(src: str, size: str) -> bytes:
+     out = subprocess.run(
+-        ["convert", src, "-resize", size, "png:-"],
+-        capture_output=True, check=True,
++        f"convert {src} -resize {size} png:-",
++        shell=True, capture_output=True, check=True,
+     )
+     return out.stdout

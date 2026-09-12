@@ -1,0 +1,13 @@
+diff --git a/migrations/017.py b/migrations/017.py
+--- a/migrations/017.py
++++ b/migrations/017.py
+@@ -1,4 +1,7 @@
+ def up(conn):
+     with conn.transaction():
+-        conn.execute("ALTER TABLE users ADD COLUMN tier TEXT NOT NULL DEFAULT 'free'")
+-        conn.execute("UPDATE users SET tier = 'pro' WHERE plan = 'professional'")
++        try:
++            conn.execute("ALTER TABLE users ADD COLUMN tier TEXT NOT NULL DEFAULT 'free'")
++            conn.execute("UPDATE users SET tier = 'pro' WHERE plan = 'professional'")
++        except Exception:
++            pass

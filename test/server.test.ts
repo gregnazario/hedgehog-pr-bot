@@ -406,7 +406,7 @@ test("/describe flows from webhook to posted description comment", async (t) => 
     });
     assert.equal(response.status, 202);
     assert.deepEqual(await response.json(), { accepted: true });
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    await waitFor("describe job", () => comments.length === 1);
 
     assert.equal(comments.length, 1);
     assert.match(comments[0], /Suggested description/);
@@ -470,7 +470,7 @@ test("/ignore flows from webhook to resolved thread and ack", async (t) => {
       comment: { id: 602, in_reply_to_id: 501, body: "/ignore", user: { login: "gregnazario" } },
     });
     assert.equal(response.status, 202);
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    await waitFor("ignore job", () => resolved.length === 1 && reactions.length === 1);
 
     assert.deepEqual(resolved, ["T501"]);
     assert.deepEqual(reactions, [[602, "+1"]]);
@@ -543,9 +543,15 @@ test("MAX_REVIEWS_PER_HOUR caps the webhook path with a skipped check", async (t
         body,
       });
       assert.equal(response.status, 202);
-      await new Promise((resolve) => setTimeout(resolve, 200));
     }
 
+    await waitFor(
+      "cap skip",
+      async () =>
+        /review_cap_skips_total 1/.test(
+          await (await fetch(`http://127.0.0.1:${port}/metrics`)).text(),
+        ) && reviews.length >= 1,
+    );
     assert.equal(reviews.length, 1);
     const capped = updates.find(
       (update) => update.conclusion === "skipped" && /cap/i.test(update.title ?? ""),

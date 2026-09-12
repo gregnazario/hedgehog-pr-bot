@@ -1,0 +1,14 @@
+{
+  "name": "01-sql-injection",
+  "title": "User search endpoint",
+  "clean": false,
+  "truth": [
+    {
+      "path": "routes/users.ts",
+      "anchor": "ILIKE '%${q}%'",
+      "class": "security",
+      "note": "SQL injection: user input interpolated into the query instead of the $1 placeholder",
+      "line": 9
+    }
+  ]
+}

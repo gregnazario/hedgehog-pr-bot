@@ -1,0 +1,12 @@
+{
+  "title": "Daily report range",
+  "clean": false,
+  "truth": [
+    {
+      "path": "report/range.ts",
+      "anchor": "new Date(y, m, d)",
+      "class": "correctness",
+      "note": "Timezone bug: UTC date parsed as local time and month is 1-based in input but 0-based in the constructor"
+    }
+  ]
+}

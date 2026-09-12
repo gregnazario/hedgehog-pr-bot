@@ -1,0 +1,14 @@
+{
+  "name": "06-off-by-one",
+  "title": "Pagination helper",
+  "clean": false,
+  "truth": [
+    {
+      "path": "src/paginate.js",
+      "anchor": "start + perPage - 1",
+      "class": "correctness",
+      "note": "Off-by-one: slice end is exclusive, so -1 drops the last item on every page",
+      "line": 3
+    }
+  ]
+}

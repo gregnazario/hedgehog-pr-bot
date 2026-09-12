@@ -1,0 +1,14 @@
+diff --git a/search/dedupe.py b/search/dedupe.py
+--- a/search/dedupe.py
++++ b/search/dedupe.py
+@@ -1,9 +1,6 @@
+ def unique(rows):
+-    seen = set()
+     out = []
+     for row in rows:
+-        key = row["id"]
+-        if key not in seen:
+-            seen.add(key)
++        if row not in out:
+             out.append(row)
+     return out

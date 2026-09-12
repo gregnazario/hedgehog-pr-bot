@@ -1,0 +1,14 @@
+{
+  "name": "08-inverted-retry",
+  "title": "Queue worker retry logic",
+  "clean": false,
+  "truth": [
+    {
+      "path": "queue/worker.py",
+      "anchor": "if attempts < MAX_ATTEMPTS",
+      "class": "correctness",
+      "note": "Inverted guard: retries are raised away and exhaustion retried forever",
+      "line": 5
+    }
+  ]
+}

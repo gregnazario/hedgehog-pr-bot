@@ -1,0 +1,14 @@
+{
+  "name": "11-n-plus-one",
+  "title": "Order summary endpoint",
+  "clean": false,
+  "truth": [
+    {
+      "path": "api/orders.ts",
+      "anchor": "orders.map(async (o) => ({",
+      "class": "performance",
+      "note": "Per-order query inside map without batching: N+1 round trips, and the async map results are Promise objects spread as items",
+      "line": 3
+    }
+  ]
+}

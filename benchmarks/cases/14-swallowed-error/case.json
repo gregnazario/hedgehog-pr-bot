@@ -1,0 +1,14 @@
+{
+  "name": "14-swallowed-error",
+  "title": "User tier migration",
+  "clean": false,
+  "truth": [
+    {
+      "path": "migrations/017.py",
+      "anchor": "except Exception:",
+      "class": "reliability",
+      "note": "Swallowed exception inside the transaction: failed migrations report success",
+      "line": 6
+    }
+  ]
+}
