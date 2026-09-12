@@ -12,7 +12,12 @@ import { makeJsonLogger } from "./logging.ts";
 import { loadIgnoreMemory } from "./memory.ts";
 import { createMetrics, type Metrics } from "./metrics.ts";
 import { notifyReview, severityCounts } from "./notify.ts";
-import { cancelQueuedProgress, prepareAcceptedJob, startQueuedProgress } from "./progress.ts";
+import {
+  abandonQueuedProgress,
+  cancelQueuedProgress,
+  prepareAcceptedJob,
+  startQueuedProgress,
+} from "./progress.ts";
 import { SerialDedupeQueue } from "./queue.ts";
 import { reviewPullRequest, runPiDescribe } from "./reviewer.ts";
 import type {
@@ -60,6 +65,30 @@ export function createAppServer({
     async (job) => {
       const token = await tokenProvider.get(job.installationId);
       const client = createClient(token);
+      // Webhook review jobs leave `kind` unset; describe/ignore set theirs.
+      if (
+        (!job.kind || job.kind === "review") &&
+        !underReviewCap(reviewConfig.reviewCapPerHour ?? 20)
+      ) {
+        metrics.inc("review_cap_skips_total");
+        await abandonQueuedProgress(client, {
+          fullName: job.fullName,
+          checkRunId: job.checkRunId,
+          title: "Review cap reached",
+          summary: "MAX_REVIEWS_PER_HOUR is exceeded; the next push or /review retries.",
+        });
+        dashboard.recordJob({
+          at: new Date().toISOString(),
+          repository: job.fullName,
+          number: job.number,
+          head: job.headSha ?? "",
+          status: "capped",
+          severities: {},
+          durationMs: 0,
+        });
+        logger.error(`Review cap reached; skipping ${job.key}`);
+        return;
+      }
       if (job.kind === "describe") {
         metrics.inc("describe_jobs_total");
         const describeStart = Date.now();
@@ -117,6 +146,7 @@ export function createAppServer({
         });
         return;
       }
+      recordReviewStart(reviewConfig.reviewCapPerHour ?? 20);
       const ignoredFingerprints = await loadIgnoreMemory(reviewConfig.memoryPath ?? "");
       const result = await reviewPullRequest({
         client,
@@ -127,6 +157,7 @@ export function createAppServer({
         checkRunId: prepared.checkRunId,
         eyesReactionId: prepared.eyesReactionId,
         repoConfig: prepared.repoConfig,
+        focusOverride: job.focus,
         reviewFingerprint: prepared.fingerprint,
         ignoredFingerprints,
         logger,
@@ -204,6 +235,19 @@ export function createAppServer({
         logger.error(`Could not open queued check for ${job.key}: ${errorMessage(error)}`);
       }
     }
+  };
+
+  const reviewStarts: number[] = [];
+  const pruneReviewStarts = (now = Date.now()): void => {
+    while (reviewStarts.length > 0 && now - reviewStarts[0] >= 3_600_000) reviewStarts.shift();
+  };
+  const underReviewCap = (cap: number): boolean => {
+    pruneReviewStarts();
+    return cap <= 0 || reviewStarts.length < cap;
+  };
+  // No cap configured means nothing to count.
+  const recordReviewStart = (cap: number): void => {
+    if (cap > 0) reviewStarts.push(Date.now());
   };
 
   const server = createServer(async (request, response) => {

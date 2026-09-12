@@ -26,6 +26,8 @@ export interface ReviewConfig {
   memoryPath?: string;
   /** Wall-clock cap for one model run; protects the serial queue. */
   piTimeoutMs?: number;
+  /** Max review jobs started per rolling hour; 0 disables the cap. */
+  reviewCapPerHour?: number;
   /** Replaces PI_MODELS for diffs above LARGE_DIFF_THRESHOLD. */
   largeModels?: ModelSpec[];
   /** Bytes of touched-file contents embedded in the bundle; 0 disables. */
@@ -57,6 +59,8 @@ export interface ReviewJob extends PullRequestRef {
   checkRunId?: number;
   /** "ignore" jobs mute a finding; "describe" jobs draft a PR description. */
   kind?: "review" | "ignore" | "describe";
+  /** Focus categories from "/review <category>"; overrides repo config. */
+  focus?: string[];
   /** For "ignore" jobs: the hedgehog comment the /ignore reply targets. */
   replyToCommentId?: number;
 }

@@ -151,6 +151,16 @@ curl -s https://your-host/healthz   # {"ok":true,...}</code></pre>
         fingerprint is derived from it, and a mismatch means everything gets re-reviewed.
       </p>
 
+      <h2>Alternative: systemd instead of Docker</h2>
+      <p>
+        The production deployment runs the server directly under systemd — same
+        code, no container. Keep a checkout on <code>main</code>, install Pi
+        globally, point an <code>EnvironmentFile</code> at the same variables as
+        <code>.env</code>, and put <code>node src/server.ts</code> behind your
+        TLS proxy. The README carries a ready-to-adapt unit file plus a daily
+        backup timer for the state directory.
+      </p>
+
       <h2>Day-to-day</h2>
       <pre><code>docker compose ps
 docker compose logs -f hedgehog-pr-bot

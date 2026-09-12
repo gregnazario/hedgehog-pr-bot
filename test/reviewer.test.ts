@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import { findingFingerprint } from "../src/memory.ts";
 import {
@@ -7,6 +10,7 @@ import {
   buildReviewSystemPrompt,
   defaultRunModel,
   reviewPullRequest,
+  runPi,
 } from "../src/reviewer.ts";
 import type { CheckRunUpdate, ReviewerClient } from "../src/types.ts";
 
@@ -1072,4 +1076,56 @@ test("defaultRunModel threads repo focus and timeout into runPi", async () => {
     return "{}";
   })("bundle", config.models[0]);
   assert.deepEqual(unfocused, [{ timeoutMs: 99, focus: undefined }]);
+});
+
+const withPiBin = async (bin: string, fn: () => Promise<unknown>) => {
+  const previous = process.env.PI_BIN;
+  process.env.PI_BIN = bin;
+  try {
+    await fn();
+  } finally {
+    if (previous === undefined) delete process.env.PI_BIN;
+    else process.env.PI_BIN = previous;
+  }
+};
+
+test("runPi resolves with subprocess stdout via the PI_BIN seam", async () => {
+  await withPiBin("/bin/echo", async () => {
+    const output = await runPi("bundle", config.models[0], 5_000);
+    assert.match(output, /--provider/);
+  });
+});
+
+test("runPi rejects on nonzero exit", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "hedgehog-pibin-"));
+  const script = join(dir, "fail");
+  await writeFile(script, "#!/bin/sh\necho boom >&2\nexit 3\n", { mode: 0o755 });
+  await assert.rejects(
+    () => withPiBin(script, () => runPi("bundle", config.models[0], 5_000)),
+    (error: Error) => error.message === "boom",
+  );
+});
+
+test("runPi enforces the wall-clock timeout", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "hedgehog-pibin-"));
+  const script = join(dir, "slow");
+  await writeFile(script, "#!/bin/sh\nsleep 5\n", { mode: 0o755 });
+  await withPiBin(script, async () => {
+    await assert.rejects(() => runPi("bundle", config.models[0], 100), /Pi timed out after 100ms/);
+  });
+});
+
+test("defaultRunModel lets a command focus override beat repo config", async () => {
+  const calls: any[] = [];
+  const runner = defaultRunModel(
+    { ...config, piTimeoutMs: 42 },
+    { focus: ["security"] },
+    async (_b, _s, timeoutMs, focus) => {
+      calls.push({ timeoutMs, focus });
+      return "{}";
+    },
+    ["tests"],
+  );
+  await runner("bundle", config.models[0]);
+  assert.deepEqual(calls, [{ timeoutMs: 42, focus: ["tests"] }]);
 });
