@@ -1,4 +1,5 @@
 diff --git a/webhooks/stripe.py b/webhooks/stripe.py
+index 9186605..76a812f 100644
 --- a/webhooks/stripe.py
 +++ b/webhooks/stripe.py
 @@ -1,6 +1,6 @@

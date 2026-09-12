@@ -40,3 +40,22 @@ test("totals aggregate recall, precision, and clean-case noise", () => {
   assert.equal(totals.precision, 2 / 3);
   assert.equal(totals.cleanCaseFindings, 3);
 });
+
+test("duplicate findings on one bug count as precision misses", () => {
+  const score = scoreCase(
+    [
+      { path: "a.ts", line: 10 },
+      { path: "a.ts", line: 11 },
+      { path: "a.ts", line: 12 },
+    ],
+    [{ path: "a.ts", line: 10, class: "security" }],
+  );
+  assert.equal(score.truthsFound, 1);
+  assert.equal(score.findingsMatched, 1);
+  assert.equal(score.findingsTotal, 3);
+});
+
+test("radius is tight enough to miss distant same-file findings", () => {
+  const score = scoreCase([{ path: "a.ts", line: 10 }], [{ path: "a.ts", line: 20, class: "x" }]);
+  assert.equal(score.truthsFound, 0);
+});

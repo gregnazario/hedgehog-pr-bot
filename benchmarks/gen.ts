@@ -20,18 +20,17 @@ const resolveAnchor = (afterRoot: string, path: string, anchor: string): number 
   return index + 1;
 };
 
-const diffFile = (beforeRoot: string, afterRoot: string, path: string): string => {
-  // diff exits 1 when files differ, which is the case we want.
-  const result = spawnSync("diff", ["-u", join(beforeRoot, path), join(afterRoot, path)], {
-    encoding: "utf8",
-  });
+const diffFile = (caseDir: string, path: string): string => {
+  // Run from the case directory so headers carry before/<path> and
+  // after/<path>, which we rewrite to the git-style a/<path> b/<path>.
+  // --no-index also handles added/deleted files natively; exit 1 = differ.
+  const result = spawnSync(
+    "git",
+    ["diff", "--no-index", "--src-prefix=a/", "--dst-prefix=b/", `before/${path}`, `after/${path}`],
+    { cwd: caseDir, encoding: "utf8" },
+  );
   if (result.status !== 1 || !result.stdout) throw new Error(`diff failed for ${path}`);
-  // Drop diff -u's header (tmp paths, timestamps); keep from the first hunk.
-  const lines = result.stdout.split("\n");
-  const firstHunk = lines.findIndex((line) => line.startsWith("@@"));
-  if (firstHunk < 0) throw new Error(`no hunks for ${path}`);
-  const hunks = lines.slice(firstHunk);
-  return [`diff --git a/${path} b/${path}`, `--- a/${path}`, `+++ b/${path}`, ...hunks].join("\n");
+  return result.stdout.replaceAll("a/before/", "a/").replaceAll("b/after/", "b/");
 };
 
 for (const entry of readdirSync(casesRoot).sort()) {
@@ -54,7 +53,7 @@ for (const entry of readdirSync(casesRoot).sort()) {
 
   writeFileSync(
     join(caseDir, "diff.patch"),
-    changed.map((path) => diffFile(beforeRoot, afterRoot, path)).join("\n"),
+    changed.map((path) => diffFile(caseDir, path)).join("\n"),
   );
   writeFileSync(
     join(caseDir, "case.json"),
@@ -72,6 +71,5 @@ for (const entry of readdirSync(casesRoot).sort()) {
       2,
     )}\n`,
   );
-  mkdirSync(join(caseDir, "files"), { recursive: true });
   console.log(`${entry}: ${changed.length} file(s), ${meta.truth.length} planted bug(s)`);
 }

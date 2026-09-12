@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { loadReviewConfig } from "../src/config.ts";
 import { reviewPullRequest } from "../src/reviewer.ts";
 import type { ReviewConfig, ReviewSubmission } from "../src/types.ts";
-import { type BenchFinding, scoreCase, totalScores } from "./score.ts";
+import { extractFindings, scoreCase, totalScores } from "./score.ts";
 
 interface BenchCase {
   name: string;
@@ -19,8 +19,9 @@ interface CaseResult {
   name: string;
   title: string;
   clean: boolean;
-  findings: BenchFinding[];
+  findings: ReturnType<typeof extractFindings>;
   score: ReturnType<typeof scoreCase>;
+  error?: string;
 }
 
 const casesRoot = new URL("./cases/", import.meta.url).pathname;
@@ -72,18 +73,7 @@ const fakeClient = (bench: BenchCase & { diff: string }) => {
   };
 };
 
-const extractFindings = (posted: ReviewSubmission | undefined): BenchFinding[] => {
-  if (!posted) return [];
-  const inline = (posted.comments ?? []).map((comment) => ({
-    path: comment.path,
-    line: comment.line,
-  }));
-  // Unmapped findings land in the body as `- **Sev** \`path:line\` — ...`.
-  const bodyList = [...String(posted.body ?? "").matchAll(/- \*\*\w+:\*\* `([^`:]+):(\d+)`/g)].map(
-    (match) => ({ path: match[1], line: Number(match[2]) }),
-  );
-  return [...inline, ...bodyList];
-};
+let failed = 0;
 
 const run = async (): Promise<void> => {
   const cases = loadCases();
@@ -111,9 +101,24 @@ const run = async (): Promise<void> => {
         },
       });
     } catch (error) {
+      failed += 1;
       process.stderr.write(`FAILED: ${(error as Error).message}\n`);
+      results.push({
+        name: bench.name,
+        title: bench.title,
+        clean: bench.clean,
+        findings: [],
+        score: {
+          truthsFound: 0,
+          truthsTotal: bench.truth.length,
+          findingsMatched: 0,
+          findingsTotal: 0,
+        },
+        error: (error as Error).message,
+      });
+      continue;
     }
-    const findings = extractFindings(posted());
+    const findings = extractFindings(posted() ?? {});
     const score = scoreCase(
       findings,
       bench.truth.map((item) => ({ path: item.path, line: item.line, class: item.class })),
@@ -125,6 +130,7 @@ const run = async (): Promise<void> => {
   }
 
   const totals = totalScores(results);
+  const errored = results.filter((r) => r.error);
   const lines = [
     "# hedgehog-pr-bot benchmark",
     "",
@@ -138,14 +144,15 @@ const run = async (): Promise<void> => {
     `- **recall: ${(totals.recall * 100).toFixed(0)}%** (${totals.truthsFound}/${totals.truthsTotal} planted bugs found)`,
     `- **precision: ${(totals.precision * 100).toFixed(0)}%** (${totals.findingsMatched}/${totals.findingsTotal} findings matched a planted bug)`,
     `- clean-case findings (false positives): **${totals.cleanCaseFindings}**`,
+    `- case failures (pipeline errors, excluded from metrics): **${errored.length}**`,
     "",
     "## Per case",
     "",
-    "| case | bugs found | findings | matched |",
-    "| --- | ---: | ---: | ---: |",
+    "| case | bugs found | findings | matched | notes |",
+    "| --- | ---: | ---: | ---: | --- |",
     ...results.map(
       (r) =>
-        `| ${r.name}${r.clean ? " *(clean)*" : ""} | ${r.clean ? "—" : `${r.score.truthsFound}/${r.score.truthsTotal}`} | ${r.score.findingsTotal} | ${r.score.findingsMatched} |`,
+        `| ${r.name}${r.clean ? " *(clean)*" : ""} | ${r.clean ? "—" : `${r.score.truthsFound}/${r.score.truthsTotal}`} | ${r.score.findingsTotal} | ${r.score.findingsMatched} | ${r.error ? `**error:** ${r.error.replaceAll("|", "\\|").slice(0, 80)}` : ""} |`,
     ),
     "",
     "## Findings detail",
@@ -157,11 +164,14 @@ const run = async (): Promise<void> => {
     ),
   ];
   const report = lines.join("\n");
-  mkdirSync(new URL("./reports/", import.meta.url).pathname, { recursive: true });
-  const file = `benchmarks/reports/${new Date().toISOString().slice(0, 10)}${dry ? "-dry" : ""}.md`;
+  const root = new URL("./", import.meta.url).pathname;
+  mkdirSync(join(root, "reports"), { recursive: true });
+  const stamp = new Date().toISOString().replace("T", "-").slice(0, 16);
+  const file = join(root, "reports", `${stamp}${dry ? "-dry" : ""}.md`);
   writeFileSync(file, `${report}\n`);
   console.log(report);
   console.log(`\nreport written to ${file}`);
+  if (failed > 0) process.exitCode = 1;
 };
 
 await run();

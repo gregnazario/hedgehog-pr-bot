@@ -1,7 +1,8 @@
 diff --git a/queue/worker.py b/queue/worker.py
+index db44736..c53df23 100644
 --- a/queue/worker.py
 +++ b/queue/worker.py
-@@ -2,6 +2,6 @@
+@@ -2,6 +2,6 @@ def process(job, attempts=0):
      try:
          return run(job)
      except TransientError:
