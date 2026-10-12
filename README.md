@@ -134,7 +134,7 @@ and key files are ignored by Git. `.env.example` contains placeholders only.
 | `DASHBOARD_TOKEN` | unset | When set, `/dashboard` requires this token (`?token=` or Bearer) |
 | `REVIEW_HISTORY_PATH` | unset | JSONL file keeping dashboard history across restarts |
 | `NOTIFY_WEBHOOK_FORMAT` | `json` | `slack` wraps notifications as `{text}` for Slack incoming webhooks |
-| `PI_VERSION` | `0.85.1` | Pi version stamped into review footers |
+| `PI_VERSION` | `1.1.0` | Pi version stamped into review footers |
 | `BOT_LOGIN` | `hedgehog-pr-bot` | The App's bot account slug; set it when self-hosting under a different App name |
 | `MAX_DIFF_CHARS` | `4000000` | Maximum diff characters sent to each model |
 | `HOST` | `0.0.0.0` | Address inside the container |
@@ -290,7 +290,7 @@ The Compose image installs no project dependencies at all; it copies `src/` and
 ## Benchmark
 
 **Recorded baseline (2026-09-12): 100% recall / 74% precision / 1 clean-case
-finding** — GLM-5.3 via Pi 0.85.1, verification pass on, diff-only corpus;
+finding** — GLM-5.3 via Pi 1.1.0, verification pass on, diff-only corpus;
 details in `benchmarks/reports/`.
 
 `benchmarks/` holds a ground-truth corpus: 16 hand-authored pull requests
